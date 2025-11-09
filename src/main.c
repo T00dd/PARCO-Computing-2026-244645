@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <omp.h>
 
 #include "timer.h"
 #include "mmio.h"
@@ -53,6 +54,13 @@ int main(int argc, char *argv[]){
 		fprintf(stderr, "Invalid schedule chunksize selected!\nPlease enter a number in this period [1,10000]\n");
 		return -1;
 	}
+
+	//setting ambient variables:
+
+	omp_set_num_thread(thread_num);
+	char* str_schedule[100];
+	sprintf(str_schedule, "%s,%d", schedule_type, schedule_chunksize);
+	setenv("OMP_SCHEDULE", str_schedule, 1);
 
 	double *val;
 	int *I, *J, M, N, nz;
@@ -144,6 +152,7 @@ double* multiplication(const csr_matrix* mat, const double* vector, int M_){
         return NULL;
     }
 
+	#pragma omp parallel for default(none) shared(mat, sum, res_vect, M_) schedule(runtime)
 	for(int i = 0; i < M_; i++){
 
 		double sum = 0.0;
