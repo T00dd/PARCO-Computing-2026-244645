@@ -25,7 +25,7 @@ int schedule_chunksize;
 
 csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_);
 double* vect_generator(int M_);
-double* multiplication(const csr_matrix*, const double* vector, int M_);
+double multiplication(const csr_matrix*, const double* vector, int M_);
 
 
 int main(int argc, char *argv[]){
@@ -57,8 +57,8 @@ int main(int argc, char *argv[]){
 
 	//setting ambient variables:
 
-	omp_set_num_thread(thread_num);
-	char* str_schedule[100];
+	omp_set_num_threads(thread_num);
+	char str_schedule[100];
 	sprintf(str_schedule, "%s,%d", schedule_type, schedule_chunksize);
 	setenv("OMP_SCHEDULE", str_schedule, 1);
 
@@ -84,7 +84,27 @@ int main(int argc, char *argv[]){
 
 	printf("Calculating the moltiplication with the following parameters:\n");
 	printf("Thread num: %d\nSchedule type: %s\nSchedule chunksize: %d\n", thread_num, schedule_type, schedule_chunksize);
-	double* result_vector = multiplication(&csr, random_vector, M);
+	double time = multiplication(&csr, random_vector, M);
+
+	if (time == -1.0) {
+		fprintf(stderr, "Memory error, SpMV failed\n");
+		return -1; 
+	}
+
+	FILE* fp;
+	const char* filename_csv = "../results/time_results.csv";
+
+	fp = fopen(filename_csv, "a");
+	if (fp == NULL){
+		fprintf(stderr, "ERR: impossible to open %s\n", filename_csv);
+		return -1;
+	}
+
+	fprintf(fp, "%s, %d, %s, %d, %e\n", matrix, thread_num, schedule_type, schedule_chunksize, time);
+	
+	fclose(fp);
+
+	printf("Results written in %s\n", filename_csv);
 
 	free(I);
 	free(J);
@@ -144,15 +164,17 @@ double* vect_generator(int N_){
 	return vect;	
 }
 
-double* multiplication(const csr_matrix* mat, const double* vector, int M_){
+double multiplication(const csr_matrix* mat, const double* vector, int M_){
 
+	double elapsed, finish, start;
 	double* res_vect = malloc(M_ * sizeof(double));
 	if (res_vect == NULL) {
         fprintf(stderr, "Errore di allocazione per il vettore risultato c.\n");
-        return NULL;
+        return -1.0;
     }
 
-	#pragma omp parallel for default(none) shared(mat, sum, res_vect, M_) schedule(runtime)
+	GET_TIME(start)
+	#pragma omp parallel for default(none) shared(mat, vector, res_vect, M_) schedule(runtime)
 	for(int i = 0; i < M_; i++){
 
 		double sum = 0.0;
@@ -163,7 +185,10 @@ double* multiplication(const csr_matrix* mat, const double* vector, int M_){
 
 		res_vect[i] = sum;
 	}
+	GET_TIME(finish)
 
-	return res_vect;
+	elapsed = finish - start;
+
+	return elapsed;
 }
 
