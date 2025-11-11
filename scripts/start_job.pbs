@@ -14,15 +14,19 @@
 module load gcc91
 
  #going to the main directory of the deliverable
-cd ..
+cd ../
+cd src/
 
 echo "Reassembling big matrices..."
-cat data/Freescale2.mtx.a* > data/Freescale2.mtx
+cat ../data/Freescale2.mtx.part-a* > ../data/Freescale2.mtx
+cat ../data/web-Google.mtx.part-a* > ../data/web-Google.mtx
+cat ../data/rajat31.mtx.part-a* > ../data/rajat31.mtx
+cat ../data/G3_circuit.mtx.part-a* > ..data/G3_circuit.mtx
 
 echo "Job started: compiling and executing benchmark..."
 
 
-gcc -O3 -fopenmp -Iinclude -o spmv_benchmark src/main.c src/mmio.c
+gcc -O3 -fopenmp -I../include -o spmv_benchmark main.c mmio.c
 if [ $? -ne 0 ]; then
 	echo "ERR: compilation failed!"
 	exit 1
@@ -31,16 +35,26 @@ echo "Compilation completed!"
 
 #definition of all the combinations
 
-MATRICES=(	"data/twotone.mtx" 
-			"data/af_shell9.mtx")
+MATRICES=(	"../data/twotone.mtx" 
+			"../data/Freescale2.mtx"
+			"../data/web-Google.mtx"
+			"../data/rajat31.mtx"
+			..data/G3_circuit.mtx	)
 
 THREADS=(1 2 4 8 16 32 64)
-SCHEDULE=(static dynamic guided)
+SCHEDULES=(static dynamic guided)
 CHUNKS=(1 10 100 1000 10000)
 
-RESULTS_FILE="results/time_results_ordered.csv"
+echo "--- DEBUG ---"
+echo "Contenuto MATRICES: ${MATRICES[@]}"
+echo "Numero elementi MATRICES: ${#MATRICES[@]}"
+echo "Contenuto THREADS: ${THREADS[@]}"
+echo "Numero elementi THREADS: ${#THREADS[@]}"
+echo "--- FINE DEBUG ---"
 
-echo "matrix, threads, schedules type, chunk size, time (ms)"
+RESULTS_FILE="../results/"
+
+echo "matrix, threads, schedules type, chunk size, time (ms)" > "$RESULTS_FILE/time_results.csv"
 
 echo "Starting benchmark..."
 
@@ -49,7 +63,7 @@ for matrix in "${MATRICES[@]}"; do
 		for schedule in "${SCHEDULES[@]}"; do
 			for chunk in "${CHUNKS[@]}"; do
 				echo "Running 10 times: $matrix, $threads, $schedule, $chunk"
-				for (i=0; i<10; i++) do
+				for ((i=0; i<10; i++)); do
 					./spmv_benchmark "$matrix" "$threads" "$schedule" "$chunk"
 				done 
 			done
@@ -58,3 +72,5 @@ for matrix in "${MATRICES[@]}"; do
 done
 
 echo "Benchmark completed. Time results saved in $RESULTS_FILE"
+
+exit

@@ -2,4 +2,7 @@
 src/spmv
 spmv_benchmark
 data/Freescale2.mtx
+data/G3_circuit.mtx
+data/rajat31.mtx
+data/web-Google.mtx
 scripts/*.sh

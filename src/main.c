@@ -59,10 +59,10 @@ int main(int argc, char *argv[]){
 
     omp_set_num_threads(thread_num);
     
-    if (strcmp(schedule_type, "static")){
+    if (strcmp(schedule_type, "static") == 0){
         omp_set_schedule(omp_sched_static, schedule_chunksize);
     }else{
-        if (strcmp(schedule_type, "dynamic")){
+        if (strcmp(schedule_type, "dynamic") == 0){
             omp_set_schedule(omp_sched_dynamic, schedule_chunksize);
         }else{
             omp_set_schedule(omp_sched_guided, schedule_chunksize);
@@ -77,20 +77,11 @@ int main(int argc, char *argv[]){
     if (mm_read_unsymmetric_sparse(matrix, &M, &N, &nz, &val, &I, &J)){
         fprintf(stderr, "Unable to read the Matrix!\n");
         return -1;
-    }else{
-        printf("Matrix %s selected\n", matrix);
     }
-
-    printf("Lines: %d, Columns: %d, Non zero values: %d\n", M, N, nz);
-
-    printf("Translating the matrix from COO to CSR...\n");
+    
     csr_matrix csr = coo_to_csr(M, nz, I, J, val);
 
-    printf("Creating random vector...\n");
     double* random_vector = vect_generator(N);
-
-    printf("Calculating the moltiplication with the following parameters:\n");
-    printf("Thread num: %d\nSchedule type: %s\nSchedule chunksize: %d\n", thread_num, schedule_type, schedule_chunksize);
     double time = multiplication(&csr, random_vector, M);
 
     if (time == -1.0) {
@@ -110,8 +101,6 @@ int main(int argc, char *argv[]){
     fprintf(fp, "%s, %d, %s, %d, %f\n", matrix, thread_num, schedule_type, schedule_chunksize, time);
 
     fclose(fp);
-
-    printf("Results written in %s\n", filename_csv);
 
     free(I);
     free(J);
@@ -178,6 +167,11 @@ double multiplication(const csr_matrix* mat, const double* vector, int M_){
     if (res_vect == NULL) {
         fprintf(stderr, "Errore di allocazione per il vettore risultato c.\n");
         return -1.0;
+    }
+
+    #pragma omp parallel for default(none) shared(res_vect, M_)
+    for(int i = 0; i < M_; i++){
+        res_vect[i] = 0.0;
     }
 
     GET_TIME(start)
