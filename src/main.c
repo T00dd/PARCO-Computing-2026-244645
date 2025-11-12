@@ -124,13 +124,14 @@ csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
     csr_mat.csr_vector = calloc((M_ + 1), sizeof(int));
     if (csr_mat.csr_vector == NULL) exit(1);
 
+	int i;
     //counting the nz elements for each row
-    for(int i = 0; i < nz_; i++){
+    for(i = 0; i < nz_; i++){
         csr_mat.csr_vector[I_[i] + 1]++;
     }
 
     //prefix sum
-    for (int i = 1; i <= M_; i++){
+    for (i = 1; i <= M_; i++){
         csr_mat.csr_vector[i] += csr_mat.csr_vector[i-1];
     }
 
@@ -139,7 +140,7 @@ csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
     if (row_pos == NULL) exit(1);
     memcpy(row_pos, csr_mat.csr_vector, (M_ + 1) * sizeof(int));
 
-    for (int i = 0; i < nz_; i++) {
+    for (i = 0; i < nz_; i++) {
         int row_index = I_[i];
         int dest_idx = row_pos[row_index];
 
@@ -169,18 +170,20 @@ double multiplication(const csr_matrix* mat, const double* vector, int M_){
         return -1.0;
     }
 
+	int i, j;
+
     #pragma omp parallel for default(none) shared(res_vect, M_)
-    for(int i = 0; i < M_; i++){
+    for(i = 0; i < M_; i++){
         res_vect[i] = 0.0;
     }
 
     GET_TIME(start)
-    #pragma omp parallel for default(none) shared(mat, vector, res_vect, M_)
-    for(int i = 0; i < M_; i++){
+    #pragma omp parallel for default(none) shared(mat, vector, res_vect, M_) private(i, j)
+    for(i = 0; i < M_; i++){
 
         double sum = 0.0;
 
-        for(int j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
+        for(j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
             sum += mat->csr_val[j] * vector[mat->csr_col[j]];
         }
 
