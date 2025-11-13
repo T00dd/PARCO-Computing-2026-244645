@@ -12,6 +12,7 @@
 #PBS -l select=1:ncpus=64:mem=16gb
 
 module load gcc91
+module load perf
 
  #going to the main directory of the deliverable
 cd "$PBS_O_WORKDIR/.."
