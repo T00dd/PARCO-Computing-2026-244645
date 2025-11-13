@@ -18,6 +18,8 @@ module load perf
 cd "$PBS_O_WORKDIR/.."
 cd "src"
 
+mkdir -p ../data
+
 PERF_MODE=0
 PERF_RESULTS_FILE="../results/perf_results_logs.csv"
 PERF_TIME_RESULTS_FILE="../results/perf_time_results.csv"
@@ -35,12 +37,52 @@ while getopts "p" opt; do
   esac
 done
 
-echo "Reassembling big matrices..."
-cat ../data/Freescale2.mtx.part-a* > ../data/Freescale2.mtx
-cat ../data/rajat31.mtx.part-a* > ../data/rajat31.mtx
-cat ../data/G3_circuit.mtx.part-a* > ../data/G3_circuit.mtx
+#download matrices
 
-echo "Job started: compiling and executing benchmark..."
+matrix_download(){
+
+	local NAME=$1
+	local URL=$2
+	local TARGET_DIR="../data"
+	local CHECK_FILE="$TARGET_DIR/$NAME.mtx"
+
+	if [ -f "$CHECK_FILE" ]; then
+		echo "Matrix $NAME found! No download needed"
+	else
+		echo "Matrix not founded. Starting to download..."
+
+		wget -q --show-progress "$URL" -O "$TARGET_DIR/$NAME.tar.gz"
+
+		if [ $? -ne 0 ]; then
+			echo "ERROR: download $NAME failed!"
+			exit 1
+		fi
+
+		echo "Starting extraction of $NAME..."
+		tar -xzf "$TARGET_DIR/$NAME.tar.gz" -C "$TARGET_DIR"
+		        
+	    if [ -f "$TARGET_DIR/$NAME/$NAME.mtx" ]; then
+		  	mv "$TARGET_DIR/$NAME/$NAME.mtx" "$TARGET_DIR/"
+		    rm -rf "$TARGET_DIR/$NAME" 
+		    rm "$TARGET_DIR/$NAME.tar.gz" 
+		    echo "Matrice $NAME pronta all'uso."
+		else
+		    echo "ERRORE: File .mtx non trovato dopo l'estrazione per $NAME"
+		    exit 1
+		fi
+		
+	fi
+	
+}
+
+
+echo "Checking matrices..."
+
+matrix_download "Freescale2" "https://sparse.tamu.edu/MM/Freescale/Freescale2.tar.gz"
+matrix_download "rajat31" "https://sparse.tamu.edu/MM/Rajat/rajat31.tar.gz"
+matrix_download "G3_circuit" "https://sparse.tamu.edu/MM/AMD/G3_circuit.tar.gz"
+
+echo "Compiling and executing benchmark..."
 
 
 gcc -O3 -fopenmp -I../include -o spmv_benchmark main.c mmio.c
