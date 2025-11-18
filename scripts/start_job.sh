@@ -1,30 +1,26 @@
 #!/bin/bash
 
-#DIRECTIVES:
-
-#PBS -N matrixex_SpMV_benchmark
-
-#PBS -o ../results/log.out
-#PBS -e ../results/log.err
-
-#PBS -q short_cpuQ
-#PBS -l walltime=06:00:00
-#PBS -l select=1:ncpus=64:mem=32gb
-
-#PBS -M giovanni.todesco@unitn.it
-#PBS -m ae
-
-module load gcc91
-module load perf
-
- #going to the main directory of the deliverable
-cd "$PBS_O_WORKDIR/.."
-cd "src"
+cd ../
+cd src/
 
 mkdir -p ../data
+mkdir -p ../results
 
 PERF_MODE=0
 PERF_RESULTS_FILE="../results/perf_results.csv"
+
+while getopts "p" opt; do
+  case $opt in
+    p)
+      echo "Flag -p rilevato: Attivazione modalità PERF"
+      PERF_MODE=1 
+      ;;
+    \?)
+      echo "Errore: Opzione -$OPTARG non valida." >&2
+      exit 1
+      ;;
+  esac
+done
 
 if [ "$PERF" -eq 1 ]; then
 	PERF_MODE=1
@@ -112,6 +108,7 @@ if [ "$PERF_MODE" -eq 0 ]; then
 
 	echo "matrix, threads, schedules type, chunk size, time (ms)" > "$RESULTS_FILE/time_results.csv"
 
+
 	for matrix in "${MATRICES[@]}"; do
 		for threads in "${THREADS[@]}"; do
 			for schedule in "${SCHEDULES[@]}"; do
@@ -139,6 +136,9 @@ else
 	echo "matrix,threads,schedule,chunk,L1_dcache_loads,L1_dcache_load_misses,LLC_loads,LLC_misses,time_ms" > "$PERF_RESULTS_FILE"
 
 	for matrix in "${MATRICES[@]}"; do
+
+		matrix_name=$(basename "$matrix" .mtx)
+
 		for threads in "${THREADS[@]}"; do
 			for schedule in "${SCHEDULES[@]}"; do
 				for chunk in "${CHUNKS[@]}"; do
@@ -153,6 +153,7 @@ else
 							PERF_OUTPUT=$(perf stat -x, -e L1-dcache-loads,L1-dcache-load-misses,LLC-loads,LLC-misses \
                             ./spmv_benchmark "$matrix" "$threads" "$schedule" "$chunk" "$TEMP_TIME_FILE" 2>&1)					    
 						
+
 						PERF_STATS=$(echo "$PERF_OUTPUT" | awk -F, '
                             /L1-dcache-loads/       { val1 = $1 }
                             /L1-dcache-load-misses/ { val2 = $1 }
@@ -176,6 +177,4 @@ else
 
 fi
 
-echo "Benchmark completed. Time results and Perf results saved in ../results/"
-
-exit
+echo "Benchmark completed. Time results and Perf results saved in $RESULTS_FILE"

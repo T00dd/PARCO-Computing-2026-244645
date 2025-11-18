@@ -17,7 +17,7 @@ The benchmark is executed on a set of sparse matrices, automatically downloaded 
 - `memchip` (Freescale)
 
 ## Project structure
-.
+.  
 ├── include/  
 │       ├── mmio.h  
 │       └── timer.h  
