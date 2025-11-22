@@ -95,7 +95,7 @@ MATRICES=(	"../data/twotone.mtx"
 			
 THREADS=(1 2 4 8 16 32 64)
 SCHEDULES=(static dynamic guided)
-CHUNKS=(1 10 100 1000 10000)
+CHUNKS=(100 1000 10000)
 
 RESULTS_FILE="../results/"
 

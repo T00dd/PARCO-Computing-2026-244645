@@ -34,7 +34,7 @@ int main(int argc, char *argv[]){
     srand(time(NULL));
 
     if(argc < 5 || argc > 6){
-        printf("Usage: %s [path of the matrix] [thread num] [schedule type] [schedule chunksize] [results .csv]\n", argv[0], argv[1]);
+        printf("Usage: %s [path of the matrix] [thread num] [schedule type] [schedule chunksize] [results .csv]\n", argv[0]);
         return -1;
     }
 
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]){
         }
             
         if(thread_num == 1){
-                fprintf(fp, "%s, %d, seq, NULL, %f\n", matrix, thread_num, schedule_type, schedule_chunksize, time);
+                fprintf(fp, "%s, %d, seq, NULL, %f\n", matrix, thread_num, time);
         }else{
                 fprintf(fp, "%s, %d, %s, %d, %f\n", matrix, thread_num, schedule_type, schedule_chunksize, time);    
         }
@@ -199,6 +199,7 @@ double* vect_generator(int N_){
     double* vect = malloc(N_ * sizeof(double));
     int i;
     for (i = 0; i < N_; i++){ vect[i] = (double) (rand()% (MAX_RAND - MIN_RAND + 1) + MIN_RAND) / 1000.0; }
+
     return vect;    
 }
 
@@ -214,6 +215,13 @@ double multiplication(const csr_matrix* mat, const double* vector, int M_){
         fprintf(stderr, "Errore di allocazione per il vettore risultato c.\n");
         return -1.0;
     }
+
+    int i_;
+    #pragma omp parallel for schedule(static)
+    for (i_ = 0; i_ < M_; i_++){
+        res_vect[i_] = 0.0;
+    }
+    
 
 	int i, j;
 
