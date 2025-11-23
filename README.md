@@ -107,7 +107,7 @@ All benchmark outputs are saved in the `results/` folder:
 
 - `time_results.csv`: (standard mode) contains the execution time (in milliseconds) for each matrix combination.
 
-- `perf_results`: (perf mode) contains the hardware profiling data (L1/LLC cache misses etc.) for each matrix combination.
+- `perf_results.csv`: (perf mode) contains the hardware profiling data (L1/LLC cache misses etc.) for each matrix combination.
 
 
 
