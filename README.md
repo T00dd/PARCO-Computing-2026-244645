@@ -22,6 +22,8 @@ The benchmark is executed on a set of sparse matrices, automatically downloaded 
 ├── include/  
 │   ├── mmio.h  
 │   └── timer.h  
+├── plots/  
+│   └── (contains plots from plotting scripts) 
 ├── results/  
 │   └── (contains CSV output for time and hardware profiling)  
 ├── scripts/  
