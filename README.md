@@ -18,22 +18,22 @@ The benchmark is executed on a set of sparse matrices, automatically downloaded 
 
 ## Project structure
 .
-├── include/
-│   ├── mmio.h
-│   └── timer.h
-├── results/
-│   └── (contains CSV output for time and hardware profiling)
-├── scripts/
-│   ├── start_job.pbs
-│   ├── start_job.sh
-│   ├── perf_plotting.py
-│   └── time_plotting.py
-├── src/
-│   ├── main.c
-│   └── mmio.c
-├── .gitignore
-├── README.md
-└── report.pdf
+├── include/  
+│   ├── mmio.h  
+│   └── timer.h  
+├── results/  
+│   └── (contains CSV output for time and hardware profiling)  
+├── scripts/  
+│   ├── start_job.pbs  
+│   ├── start_job.sh  
+│   ├── perf_plotting.py  
+│   └── time_plotting.py  
+├── src/  
+│   ├── main.c  
+│   └── mmio.c  
+├── .gitignore  
+├── README.md  
+└── report.pdf  
 
 ## Requirements and execution enviroments
 
