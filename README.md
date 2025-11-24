@@ -17,21 +17,23 @@ The benchmark is executed on a set of sparse matrices, automatically downloaded 
 - `memchip` (Freescale)
 
 ## Project structure
-.  
-├── include/  
-│       ├── mmio.h  
-│       └── timer.h  
-├── results/  
-│       └── (contains CSV output for time and hardware profilin)  
-├── scripts/  
-│       ├── start_job.pbs  
-│       ├── start_job.sh  
-│       └── plotting  
-├── src/  
-│       ├── main.c  
-│       └── mmio.c  
-├── .gitignore  
-└── README.md  
+.
+├── include/
+│   ├── mmio.h
+│   └── timer.h
+├── results/
+│   └── (contains CSV output for time and hardware profiling)
+├── scripts/
+│   ├── start_job.pbs
+│   ├── start_job.sh
+│   ├── perf_plotting.py
+│   └── time_plotting.py
+├── src/
+│   ├── main.c
+│   └── mmio.c
+├── .gitignore
+├── README.md
+└── report.pdf
 
 ## Requirements and execution enviroments
 
@@ -109,7 +111,18 @@ All benchmark outputs are saved in the `results/` folder:
 
 - `perf_results.csv`: (perf mode) contains the hardware profiling data (L1/LLC cache misses etc.) for each matrix combination.
 
+## Plotting scripts
 
+The plotting scripts located in the `scripts/` folder (`perf_plotting.py` and `time_plotting.py`) must not be executed on the cluster.
+They are intended only for local execution, since they rely on graphical libraries (Matplotlib, Seaborn) that are typically not available or not supported on HPC compute nodes.
 
+When executed locally, each script automatically generates all the figures and saves them in the `plots/` directory. This folder is created if it does not already exist.
 
+Before running the plotting scripts, make sure your local environment includes the following dependencies:
+
+1. Python 3
+2. `pandas`
+3. `matplotlib`
+4. `seaborn`
+5. `numpy`
 
