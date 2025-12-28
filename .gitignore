@@ -1,8 +1,7 @@
 
 src/spmv
 spmv_benchmark
-data/Freescale2.mtx
-data/G3_circuit.mtx
-data/rajat31.mtx
-data/web-Google.mtx
 data/*.mtx
+        
+Old_deliverable/src/spmv
+Old_deliverable/data/*.mtx

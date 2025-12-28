@@ -3,7 +3,6 @@
 #include <string.h>
 #include <time.h>
 #include <omp.h>
-#include <mpi.h>
 
 #include "timer.h"
 #include "mmio.h"
@@ -20,7 +19,9 @@ typedef struct{
 }csr_matrix;
 
 char* matrix;
-char* scaling_type;
+int thread_num;
+char* schedule_type;
+int schedule_chunksize;
 char* results = "../results/time_results.csv";
 
 csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_);
@@ -32,63 +33,57 @@ int main(int argc, char *argv[]){
 
     srand(time(NULL));
 
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-    if(argc != 3){
-        if(rank == 0){
-            printf("Usage: mpirun -n num_proc %s [path of the matrix] [type of scaling]\n", argv[0]);
-            printf("-ws for weak scaling, -ss for strong scaling\n");
-        }
-        MPI_Finalize();
+    if(argc < 5 || argc > 6){
+        printf("Usage: %s [path of the matrix] [thread num] [schedule type] [schedule chunksize] [results .csv]\n", argv[0]);
         return -1;
     }
 
     matrix = argv[1];
-    scaling_type = argv[2];
-    
-    if(strcmp(scaling_type, "-ss") && strcmp(scaling_type, "-ws")){
-        if(rank == 0){
-            printf("Scaling type not accepted! Select between:\nWeak scaling (-ws)\nStrong scaling (-ss)\n");
-        }
-        MPI_Finalize();
+    thread_num = atoi(argv[2]);
+    schedule_type = argv[3];
+    schedule_chunksize = atoi(argv[4]);
+
+    if(argc == 6){
+        results = argv[5];
+    }
+
+    if (thread_num < 1 || thread_num > 64){
+        fprintf(stderr, "Invalid number of thread selected!\nPlease enter a number in this period [1,64]\n");
+        return -1;
+    }
+    if (strcmp(schedule_type, "static") && strcmp(schedule_type, "dynamic") && strcmp(schedule_type, "guided")){
+        fprintf(stderr, "Invalid schedule type selected!\nPlease enter one of this schedule type:\nstatic\ndynamic\nguided\n");
+        return -1;
+    }
+    if (schedule_chunksize < 1 || schedule_chunksize > 10000){
+        fprintf(stderr, "Invalid schedule chunksize selected!\nPlease enter a number in this period [1,10000]\n");
         return -1;
     }
 
+    //setting enviroment variables:
 
-    double *val = NULL;
-    int *I = NULL, *J = NULL;
-    int M, N, nz;
+    omp_set_num_threads(thread_num);
+    
+    if (strcmp(schedule_type, "static") == 0){
+        omp_set_schedule(omp_sched_static, schedule_chunksize);
+    }else{
+        if (strcmp(schedule_type, "dynamic") == 0){
+            omp_set_schedule(omp_sched_dynamic, schedule_chunksize);
+        }else{
+            omp_set_schedule(omp_sched_guided, schedule_chunksize);
+        }        
+    }    
+
+    double *val;
+    int *I, *J, M, N, nz;
     //I = indices rows, J = indices columns
     //M = numbers of rows, N = numbers of columns
 
-    if(rank == 0){
-        if(mm_read_unsymmetric_sparse(matrix, &M, &N, &nz, &val, &I, &J)){
-            fprintf(stderr, "Unable to read the Matrix!\n");
-            MPI_Abort(MPI_COMM_WORLD, -1);
-        }
+    if (mm_read_unsymmetric_sparse(matrix, &M, &N, &nz, &val, &I, &J)){
+        fprintf(stderr, "Unable to read the Matrix!\n");
+        return -1;
     }
     
-    MPI_Bcast(&M, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&N, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&nz, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
-
-
-    int *send_counts = calloc(size, sizeof(int));
-    if(rank == 0){
-        int k;
-        for(k = 0; k < nz; k++){
-            int target_rank = I[k] % size;  
-            send_counts[target_rank]++;
-        }
-    }
-
-    //telling each rank how many nz values it will receive
-    int local_nz;
-    MPI_Scatter(send_counts, 1, MPI_INT, &local_nz, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    
-
     csr_matrix csr = coo_to_csr(M, nz, I, J, val);
 
     double* random_vector = vect_generator(N);
@@ -155,16 +150,12 @@ int main(int argc, char *argv[]){
 
     free(random_vector);
 
-    MPI_Finalize();
-
     return 0;
 }
 
 csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
 
     csr_matrix csr_mat;
-
-    int M_local = (M_ / size) + (rank < (M_ % size) ? 1 : 0)
 
     csr_mat.csr_col = malloc(nz_ * sizeof(int));
     csr_mat.csr_val = malloc(nz_ * sizeof(double));
@@ -176,7 +167,7 @@ csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
 	int i;
     //counting the nz elements for each row
     for(i = 0; i < nz_; i++){
-        csr_mat.csr_vector[(I_[i] / size) + 1]++;
+        csr_mat.csr_vector[I_[i] + 1]++;
     }
 
     //prefix sum
@@ -190,7 +181,7 @@ csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
     memcpy(row_pos, csr_mat.csr_vector, (M_ + 1) * sizeof(int));
 
     for (i = 0; i < nz_; i++) {
-        int row_index = I_[i] / size;
+        int row_index = I_[i];
         int dest_idx = row_pos[row_index];
 
         csr_mat.csr_col[dest_idx] = J_[i];
