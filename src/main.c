@@ -90,9 +90,64 @@ int main(int argc, char *argv[]){
     int local_nz;
     MPI_Scatter(send_counts, 1, MPI_INT, &local_nz, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    int *local_I = malloc(local_nz, sizeof(int));
-    int *local_J = malloc(local_nz, sizeof(int));
-    double *local_Val = malloc(local_nz, sizeof(double));
+    int *local_I = malloc(local_nz * sizeof(int));
+    int *local_J = malloc(local_nz * sizeof(int));
+    double *local_Val = malloc(local_nz * sizeof(double));
+
+    if(rank == 0){
+
+        int **temp_I = malloc(size * sizeof(int));
+        int **temp_J = malloc(size * sizeof(int));
+        double **temp_Val = malloc(size * sizeof(double));
+        int **current_position = calloc(size * sizeof(int));
+
+        int p;
+        for(p = 0; p < size; p++){
+
+            temp_I[p] = malloc(send_counts[p]*sizeof(int));
+            temp_J[p] = malloc(send_counts[p]*sizeof(int));
+            temp_Val[p] = malloc(send_counts[p]*sizeof(double));
+
+        }
+
+        int k;
+        for(k = 0; k < nz; k++){
+
+            int p = I[k] % size;
+            int pos = current_position[p];
+            temp_I[p][pos] = I[k];
+            temp_J[p][pos] = J[k];
+            temp_Val[p][pos] = Val[k];
+            current_position[p]++;
+        }
+
+        for(p = 1; p < size; p++){
+            MPI_Send(temp_I[p], send_counts[p], MPI_INT, p, 0, MPI_COMM_WORLD);
+            MPI_Send(temp_J[p], send_counts[p], MPI_INT, p, 1, MPI_COMM_WORLD);
+            MPI_Send(temp_Val[p], send_counts[p], MPI_DOUBLE, p, 2, MPI_COMM_WORLD);
+        }
+
+        memcpy(local_I, temp_I[0], send_counts[0]*sizeof(int));
+        memcpy(local_J, temp_J[0], send_counts[0]*sizeof(int));
+        memcpy(local_Val, temp_Val[0], send_counts[0]*sizeof(double));
+
+        for(p = 0; p< size; p++){
+            free(temp_I[p]);
+            free(temp_J[p]);
+            free(temp_Val[p]);
+        }
+
+        free(temp_I);
+        free(temp_J);
+        free(temp_Val);
+
+
+    }else{
+
+        MPI_Recv(local_I, local_nz, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(local_J, local_nz, MPI_INT, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(local_Val, local_nz, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
 
     //each rank call the function
     csr_matrix csr = coo_to_csr(M, nz, I, J, val);
