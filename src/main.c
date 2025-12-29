@@ -32,6 +32,7 @@ int main(int argc, char *argv[]){
 
     srand(time(NULL));
 
+    int rank, size;
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -57,22 +58,23 @@ int main(int argc, char *argv[]){
     }
 
 
-    double *val = NULL;
-    int *I = NULL, *J = NULL;
-    int M, N, nz;
-    //I = indices rows, J = indices columns
-    //M = numbers of rows, N = numbers of columns
+   
+    if(rank == 0){ 
+        double *val = NULL;
+        int *I = NULL, *J = NULL;
+        int M, N, nz;
+        //I = indices rows, J = indices columns
+        //M = numbers of rows, N = numbers of columns
 
-    if(rank == 0){
         if(mm_read_unsymmetric_sparse(matrix, &M, &N, &nz, &val, &I, &J)){
             fprintf(stderr, "Unable to read the Matrix!\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
     }
     
-    MPI_Bcast(&M, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&N, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&nz, sizeof(int), MPI_BYTE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&M, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&N, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&nz, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
 
     int *send_counts = calloc(size, sizeof(int));
@@ -87,13 +89,21 @@ int main(int argc, char *argv[]){
     //telling each rank how many nz values it will receive
     int local_nz;
     MPI_Scatter(send_counts, 1, MPI_INT, &local_nz, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    
 
+    int *local_I = malloc(local_nz, sizeof(int));
+    int *local_J = malloc(local_nz, sizeof(int));
+    double *local_Val = malloc(local_nz, sizeof(double));
+
+    //each rank call the function
     csr_matrix csr = coo_to_csr(M, nz, I, J, val);
 
-    double* random_vector = vect_generator(N);
+    if(rank ==  0){
+        double* random_vector = vect_generator(N);
+    }else{
+        random_vector = malloc(N * sizeof(double));
+    }
 
-
+    MPI_Bcast(random_vector, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
 
     FILE* fp;
@@ -170,33 +180,34 @@ csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
     csr_mat.csr_val = malloc(nz_ * sizeof(double));
     if (csr_mat.csr_col == NULL || csr_mat.csr_val == NULL) exit(1);
 
-    csr_mat.csr_vector = calloc((M_ + 1), sizeof(int));
+    csr_mat.csr_vector = calloc((M_local + 1), sizeof(int));
     if (csr_mat.csr_vector == NULL) exit(1);
 
 	int i;
     //counting the nz elements for each row
     for(i = 0; i < nz_; i++){
-        csr_mat.csr_vector[(I_[i] / size) + 1]++;
+        int local_row = I_local[k] / size
+        csr_mat.csr_vector[local_row + 1]++;
     }
 
     //prefix sum
-    for (i = 1; i <= M_; i++){
+    for (i = 1; i <= M_local; i++){
         csr_mat.csr_vector[i] += csr_mat.csr_vector[i-1];
     }
 
     //reordering 
-    int* row_pos = malloc((M_ + 1) * sizeof(int));
+    int* row_pos = malloc((M_local + 1) * sizeof(int));
     if (row_pos == NULL) exit(1);
-    memcpy(row_pos, csr_mat.csr_vector, (M_ + 1) * sizeof(int));
+    memcpy(row_pos, csr_mat.csr_vector, (M_local + 1) * sizeof(int));
 
     for (i = 0; i < nz_; i++) {
-        int row_index = I_[i] / size;
-        int dest_idx = row_pos[row_index];
+        int local_row = I_[i] / size;
+        int dest_idx = row_pos[local_row];
 
         csr_mat.csr_col[dest_idx] = J_[i];
         csr_mat.csr_val[dest_idx] = val_[i];
 
-        row_pos[row_index]++;
+        row_pos[local_row]++;
     }
 
     free(row_pos);
