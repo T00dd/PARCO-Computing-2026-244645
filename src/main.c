@@ -23,10 +23,11 @@ char* matrix;
 char* scaling_type;
 char* results = "../results/time_results.csv";
 
-csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_);
+csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank);
 double* vect_generator(int N_);
-double multiplication(const csr_matrix*, const double* vector, int M_);
-double multiplication_sequential(const csr_matrix* mat, const double* vector, int M_);
+double multiplication(const csr_matrix*, const double* vector, int M_local);
+double multiplication_sequential(const csr_matrix* mat, const double* vector, int M_local);
+int compare_doubles(const void *a, const void *b);
 
 int main(int argc, char *argv[]){
 
@@ -57,15 +58,13 @@ int main(int argc, char *argv[]){
         return -1;
     }
 
-
-   
+    double *val = NULL;
+    int *I = NULL, *J = NULL;
+    int M, N, nz;
+    //I = indices rows, J = indices columns
+    //M = numbers of rows, N = numbers of columns
+    
     if(rank == 0){ 
-        double *val = NULL;
-        int *I = NULL, *J = NULL;
-        int M, N, nz;
-        //I = indices rows, J = indices columns
-        //M = numbers of rows, N = numbers of columns
-
         if(mm_read_unsymmetric_sparse(matrix, &M, &N, &nz, &val, &I, &J)){
             fprintf(stderr, "Unable to read the Matrix!\n");
             MPI_Abort(MPI_COMM_WORLD, -1);
@@ -96,10 +95,10 @@ int main(int argc, char *argv[]){
 
     if(rank == 0){
 
-        int **temp_I = malloc(size * sizeof(int));
-        int **temp_J = malloc(size * sizeof(int));
-        double **temp_Val = malloc(size * sizeof(double));
-        int **current_position = calloc(size * sizeof(int));
+        int **temp_I = malloc(size * sizeof(int*));
+        int **temp_J = malloc(size * sizeof(int*));
+        double **temp_Val = malloc(size * sizeof(double*));
+        int *current_position = calloc(size, sizeof(int));
 
         int p;
         for(p = 0; p < size; p++){
@@ -117,7 +116,7 @@ int main(int argc, char *argv[]){
             int pos = current_position[p];
             temp_I[p][pos] = I[k];
             temp_J[p][pos] = J[k];
-            temp_Val[p][pos] = Val[k];
+            temp_Val[p][pos] = val[k];
             current_position[p]++;
         }
 
@@ -140,7 +139,7 @@ int main(int argc, char *argv[]){
         free(temp_I);
         free(temp_J);
         free(temp_Val);
-
+        free(current_position);
 
     }else{
 
@@ -150,86 +149,122 @@ int main(int argc, char *argv[]){
     }
 
     //each rank call the function
-    csr_matrix csr = coo_to_csr(M, nz, I, J, val);
+    int M_local = (M / size) + (rank < (M % size) ? 1 : 0);    
+    csr_matrix csr = coo_to_csr(M_local, local_nz, local_I, local_J, local_Val, size, rank);
 
+    double* random_vector = NULL
     if(rank ==  0){
-        double* random_vector = vect_generator(N);
+        random_vector = vect_generator(N);
     }else{
         random_vector = malloc(N * sizeof(double));
     }
 
     MPI_Bcast(random_vector, N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
-
-    FILE* fp;
-
-    fp = fopen(results, "a");
-    if (fp == NULL){
-        fprintf(stderr, "ERR: impossible to open %s\n", results);
-        return -1;
-    }
-
+    double local_time, max_time;
+    double all_times[10];
     int i;
-    double time;
+    for(i = 0; i<10; i++){
 
-    if(argc == 6){
+        MPI_Barrier(MPI_COMM_WORLD);
+        local_time = multiplication(&csr, random_vector, M_local);
+        MPI_Reduce(&local_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-        time = multiplication(&csr, random_vector, M);
-            
-        if (time == -1.0) {
-            fprintf(stderr, "Memory error, SpMV failed\n");
-            return -1; 
-        }
-            
-        if(thread_num == 1){
-                fprintf(fp, "%s, %d, seq, NULL, %f\n", matrix, thread_num, time);
-        }else{
-                fprintf(fp, "%s, %d, %s, %d, %f\n", matrix, thread_num, schedule_type, schedule_chunksize, time);    
+        if(rank==0){
+            all_times[i] = max_time;
         }
 
-    }else{
-
-        for (i = 0; i < 10; i++){
-        
-            time = multiplication(&csr, random_vector, M);
-            
-            if (time == -1.0) {
-                fprintf(stderr, "Memory error, SpMV failed\n");
-                return -1; 
-            }
-            
-            if(thread_num == 1){
-                    fprintf(fp, "%s, %d, seq, NULL, %f\n", matrix, thread_num, time);
-            }else{
-                    fprintf(fp, "%s, %d, %s, %d, %f\n", matrix, thread_num, schedule_type, schedule_chunksize, time);    
-            }
-
-        }
     }
+
+    if(rank == 0){
+
+        FILE* fp;
+
+        fp = fopen(results, "a");
+        if (fp == NULL){
+            fprintf(stderr, "ERR: impossible to open %s\n", results);
+            MPI_Abort(MPI_COMM_WORLD, -1);
+            return -1;
+        }
+
+        qsort(all_times, 10, sizeof(double), compare_doubles);
+        double percentile_90 = all_times[8];
+
+        double seconds = percentile_90 / 1000.0;
+        double total_flops = (2.0 * nz) / seconds;
+        double mflops = total_flops / 1e6;
+        double gflops = total_flops / 1e9;
+
+        printf("Prestazioni: %f GFLOPS\n", gflops);
+
+        fprintf(fp, "%s, %d, %f, %f\n", matrix, size, percentile_90, mflops);
+
+        fclose(fp);
+
+
+        free(I);
+        free(J);
+        free(val);
+
+        free(csr.csr_col);
+        free(csr.csr_val);
+        free(csr.csr_vector);
+
+        free(random_vector);
+    }
+
     
 
-    fclose(fp);
+    // int i;
+    // double time;
 
-    free(I);
-    free(J);
-    free(val);
+    // if(argc == 6){
 
-    free(csr.csr_col);
-    free(csr.csr_val);
-    free(csr.csr_vector);
+    //     time = multiplication(&csr, random_vector, M);
+            
+    //     if (time == -1.0) {
+    //         fprintf(stderr, "Memory error, SpMV failed\n");
+    //         MPI_Finalize();
+    //         return -1; 
+    //     }
+            
+    //     if(thread_num == 1){
+    //             fprintf(fp, "%s, %d, seq, NULL, %f\n", matrix, thread_num, time);
+    //     }else{
+    //             fprintf(fp, "%s, %d, %s, %d, %f\n", matrix, thread_num, schedule_type, schedule_chunksize, time);    
+    //     }
 
-    free(random_vector);
+    // }else{
+
+    //     for (i = 0; i < 10; i++){
+        
+    //         time = multiplication(&csr, random_vector, M);
+            
+    //         if (time == -1.0) {
+    //             fprintf(stderr, "Memory error, SpMV failed\n");
+    //             MPI_Finalize();
+    //             return -1; 
+    //         }
+            
+    //         if(thread_num == 1){
+    //                 fprintf(fp, "%s, %d, seq, NULL, %f\n", matrix, thread_num, time);
+    //         }else{
+    //                 fprintf(fp, "%s, %d, %s, %d, %f\n", matrix, thread_num, schedule_type, schedule_chunksize, time);    
+    //         }
+
+    //     }
+    // }
+    
+
+    
 
     MPI_Finalize();
-
     return 0;
 }
 
-csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
+csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank){
 
     csr_matrix csr_mat;
-
-    int M_local = (M_ / size) + (rank < (M_ % size) ? 1 : 0)
 
     csr_mat.csr_col = malloc(nz_ * sizeof(int));
     csr_mat.csr_val = malloc(nz_ * sizeof(double));
@@ -241,7 +276,7 @@ csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
 	int i;
     //counting the nz elements for each row
     for(i = 0; i < nz_; i++){
-        int local_row = I_local[k] / size
+        int local_row = I_[i] % size;
         csr_mat.csr_vector[local_row + 1]++;
     }
 
@@ -256,7 +291,7 @@ csr_matrix coo_to_csr(int M_, int nz_, int *I_, int* J_, double* val_){
     memcpy(row_pos, csr_mat.csr_vector, (M_local + 1) * sizeof(int));
 
     for (i = 0; i < nz_; i++) {
-        int local_row = I_[i] / size;
+        int local_row = I_[i] % size;
         int dest_idx = row_pos[local_row];
 
         csr_mat.csr_col[dest_idx] = J_[i];
@@ -278,31 +313,29 @@ double* vect_generator(int N_){
     return vect;    
 }
 
-double multiplication(const csr_matrix* mat, const double* vector, int M_){
+double multiplication(const csr_matrix* mat, const double* vector, int M_local){
 
     if(thread_num == 1){
-        return multiplication_sequential(mat, vector, M_);
+        return multiplication_sequential(mat, vector, M_local);
     }
 
     double elapsed, finish, start;
-    double* res_vect = malloc(M_ * sizeof(double));
+    double* res_vect = malloc(M_local * sizeof(double));
     if (res_vect == NULL) {
         fprintf(stderr, "Errore di allocazione per il vettore risultato c.\n");
         return -1.0;
     }
 
-    int i_;
+    int i, j;
     #pragma omp parallel for schedule(static)
-    for (i_ = 0; i_ < M_; i_++){
-        res_vect[i_] = 0.0;
+    for (i = 0; i < M_local; i++){
+        res_vect[i] = 0.0;
     }
     
 
-	int i, j;
-
     GET_TIME(start)
-    #pragma omp parallel for default(none) shared(mat, vector, res_vect, M_) private(i, j) schedule(runtime)
-    for(i = 0; i < M_; i++){
+    #pragma omp parallel for default(none) shared(mat, vector, res_vect, M_local) private(i, j) schedule(runtime)
+    for(i = 0; i < M_local; i++){
 
         double sum = 0.0;
 
@@ -320,10 +353,10 @@ double multiplication(const csr_matrix* mat, const double* vector, int M_){
     return (elapsed * 1000);
 }
 
-double multiplication_sequential(const csr_matrix* mat, const double* vector, int M_){
+double multiplication_sequential(const csr_matrix* mat, const double* vector, int M_local){
 
     double elapsed, finish, start;
-    double* res_vect = malloc(M_ * sizeof(double));
+    double* res_vect = malloc(M_local * sizeof(double));
     if (res_vect == NULL) {
         fprintf(stderr, "Errore di allocazione per il vettore risultato c.\n");
         return -1.0;
@@ -331,12 +364,12 @@ double multiplication_sequential(const csr_matrix* mat, const double* vector, in
 
 	int i, j;
 
-    for(i = 0; i < M_; i++){
+    for(i = 0; i < M_local; i++){
         res_vect[i] = 0.0;
     }
 
     GET_TIME(start)
-    for(i = 0; i < M_; i++){
+    for(i = 0; i < M_local; i++){
 
         double sum = 0.0;
 
@@ -352,4 +385,12 @@ double multiplication_sequential(const csr_matrix* mat, const double* vector, in
     free(res_vect);
 
     return (elapsed * 1000);
+}
+
+int compare_doubles(const void *a, const void *b) {
+    double arg1 = *(const double *)a;
+    double arg2 = *(const double *)b;
+    if (arg1 < arg2) return -1;
+    if (arg1 > arg2) return 1;
+    return 0;
 }
