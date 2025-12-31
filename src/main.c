@@ -19,8 +19,9 @@ typedef struct{
     double* csr_val;
 }csr_matrix;
 
-char* matrix;
-char* scaling_type;
+char* matrix = NULL;
+char* scaling_type = NULL;
+char* parallelization = NULL;
 char* results = "../results/time_results.csv";
 
 csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank);
@@ -38,10 +39,11 @@ int main(int argc, char *argv[]){
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    if(argc != 3){
+    if(argc < 3 || argc > 4){
         if(rank == 0){
-            printf("Usage: mpirun -n num_proc %s [path of the matrix] [type of scaling]\n", argv[0]);
-            printf("-ws for weak scaling, -ss for strong scaling\n");
+            printf("Usage: mpirun -n num_proc %s [path of the matrix] [type of scaling] [node parallelization on]\n", argv[0]);
+            printf("'-ws' for weak scaling, '-ss' for strong scaling\n");
+            printf("'-on' If you want to activate parallelization in every node\n");
         }
         MPI_Finalize();
         return -1;
@@ -49,6 +51,9 @@ int main(int argc, char *argv[]){
 
     matrix = argv[1];
     scaling_type = argv[2];
+    if(argc == 4){
+        parallelization = argv[3];
+    }
     
     if(strcmp(scaling_type, "-ss") && strcmp(scaling_type, "-ws")){
         if(rank == 0){
@@ -152,7 +157,7 @@ int main(int argc, char *argv[]){
     int M_local = (M / size) + (rank < (M % size) ? 1 : 0);    
     csr_matrix csr = coo_to_csr(M_local, local_nz, local_I, local_J, local_Val, size, rank);
 
-    double* random_vector = NULL
+    double* random_vector = NULL;
     if(rank ==  0){
         random_vector = vect_generator(N);
     }else{
@@ -206,11 +211,6 @@ int main(int argc, char *argv[]){
         free(J);
         free(val);
 
-        free(csr.csr_col);
-        free(csr.csr_val);
-        free(csr.csr_vector);
-
-        free(random_vector);
     }
 
     
@@ -255,8 +255,15 @@ int main(int argc, char *argv[]){
     //     }
     // }
     
+    free(local_I);
+    free(local_J);
+    free(local_Val);
+    free(send_counts);
 
-    
+    free(csr.csr_col);
+    free(csr.csr_val);
+    free(csr.csr_vector);
+    free(random_vector);
 
     MPI_Finalize();
     return 0;
@@ -276,7 +283,7 @@ csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int 
 	int i;
     //counting the nz elements for each row
     for(i = 0; i < nz_; i++){
-        int local_row = I_[i] % size;
+        int local_row = I_[i] / size;
         csr_mat.csr_vector[local_row + 1]++;
     }
 
@@ -291,7 +298,7 @@ csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int 
     memcpy(row_pos, csr_mat.csr_vector, (M_local + 1) * sizeof(int));
 
     for (i = 0; i < nz_; i++) {
-        int local_row = I_[i] % size;
+        int local_row = I_[i] / size;
         int dest_idx = row_pos[local_row];
 
         csr_mat.csr_col[dest_idx] = J_[i];
@@ -315,7 +322,7 @@ double* vect_generator(int N_){
 
 double multiplication(const csr_matrix* mat, const double* vector, int M_local){
 
-    if(thread_num == 1){
+    if(parallelization == NULL || strcmp(parallelization, "-on") != 0){
         return multiplication_sequential(mat, vector, M_local);
     }
 
