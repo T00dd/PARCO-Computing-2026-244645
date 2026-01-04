@@ -34,7 +34,6 @@ void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int r
 
     csr->ghost_count = 0;
     csr->ghost_indices = malloc(temp_count * sizeof(int));
-    csr->local_to_global = malloc(temp_count * sizeof(int));
     
     int local_count = 0;
     for(i = 0; i < temp_count; i++){
