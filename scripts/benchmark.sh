@@ -1,0 +1,93 @@
+#!/bin/bash
+
+cd "$PBS_O_WORKDIR/../src"
+mkdir -p ../data
+mkdir -p ../results
+
+
+matrix_download(){
+
+	local NAME=$1
+	local URL=$2
+	local TARGET_DIR="../data"
+	local CHECK_FILE="$TARGET_DIR/$NAME.mtx"
+
+	if [ -f "$CHECK_FILE" ]; then
+		echo "Matrix $NAME found! No download needed"
+	else
+		echo "Matrix not founded. Starting to download..."
+
+		wget -q "$URL" -O "$TARGET_DIR/$NAME.tar.gz"
+
+		if [ $? -ne 0 ]; then
+			echo "ERROR: download $NAME failed!"
+			exit 1
+		fi
+
+		echo "Starting extraction of $NAME..."
+		tar -xzf "$TARGET_DIR/$NAME.tar.gz" -C "$TARGET_DIR"
+		        
+	    if [ -f "$TARGET_DIR/$NAME/$NAME.mtx" ]; then
+		  	mv "$TARGET_DIR/$NAME/$NAME.mtx" "$TARGET_DIR/"
+		    rm -rf "$TARGET_DIR/$NAME" 
+		    rm "$TARGET_DIR/$NAME.tar.gz" 
+		    echo "Matrix $NAME ready to use."
+		else
+		    echo "ERROR: File .mtx not found after extraction: $NAME"
+		    exit 1
+		fi
+		
+	fi
+	
+}
+
+echo "Checking matrices..."
+
+matrix_download "twotone" "https://sparse.tamu.edu/MM/ATandT/twotone.tar.gz"
+matrix_download "Transport" "https://sparse.tamu.edu/MM/Janna/Transport.tar.gz"
+
+
+echo "Compiling with MPI and OpenMP..."
+
+
+mpicc -O3 -fopenmp -I../include -o spmv_mpi_benchmark ../src/main.c ../src/mmio.c ../src/ghost_entries.c -lm
+if [ $? -ne 0 ]; then 
+    echo "Compilation failed!"; 
+    exit 1; 
+fi
+echo "Compilation completed!"
+
+
+RESULTS_FILE="../results/time_results.csv"
+echo "matrix,type,size,time_ms,mflops" > "$RESULTS_FILE"
+
+
+echo "Starting Strong Scaling..."
+
+
+# STR_MATRIX="../data/twotone.mtx"
+# for procs in 1 2 4 8 16 32 64 128; do
+#     echo "Strong Scaling: $procs processes"
+#     mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
+# done
+
+# STR_MATRIX="../data/Transport.mtx"
+# for procs in 1 2 4 8 16 32 64 128; do
+#     echo "Strong Scaling: $procs processes"
+#     mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
+# done
+
+echo "Starting Weak Scaling..."
+
+
+for procs in 1 2 4 8 16 32 64 128; do
+    WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
+    if [ -f "$WEAK_MATRIX" ]; then
+        echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
+        mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
+    else
+        echo "Warning: $WEAK_MATRIX not found, skipping."
+    fi
+done
+
+echo "Benchmarks completed!"
