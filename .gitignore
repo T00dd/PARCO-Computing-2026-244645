@@ -8,6 +8,8 @@ data/torso1.mtx
 data/cage14.mtx
 results/*
 scripts/spmv_mpi_benchmark
+scripts/strong_scaling*
+scripts/weak_scaling*
         
 Old_deliverable/src/spmv
 Old_deliverable/data/*.mtx

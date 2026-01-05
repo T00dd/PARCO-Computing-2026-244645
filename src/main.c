@@ -264,7 +264,7 @@ int main(int argc, char *argv[]){
 
         double ms_com = percentile_90_com / 1000.0;
         double ms_mult = percentile_90_mult;
-        double total_flops = (2.0 * nz) / (ms_mult*1000.0);
+        double total_flops = (2.0 * nz) / (ms_mult/1000.0);
         double mflops = total_flops / 1e6;
         double gflops = total_flops / 1e9;
 
