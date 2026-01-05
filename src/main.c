@@ -59,6 +59,11 @@ int main(int argc, char *argv[]){
         return -1;
     }
 
+    if(argc == 4){
+        results_ss = "../results/time_results_strong_parall.csv";
+        results_ws = "../results/time_results_weak_parall.csv";
+    }
+
     double *val = NULL;
     int *I = NULL, *J = NULL;
     int M, N, nz;

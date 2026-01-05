@@ -3,6 +3,9 @@ src/spmv
 spmv_benchmark
 data/Transport.mtx
 data/twotone.mtx
+data/memchip.mtx
+data/torso1.mtx
+data/cage14.mtx
 results/*
 scripts/spmv_mpi_benchmark
         
