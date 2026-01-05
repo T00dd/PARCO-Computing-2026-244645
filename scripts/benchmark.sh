@@ -45,7 +45,9 @@ echo "Checking matrices..."
 
 matrix_download "twotone" "https://sparse.tamu.edu/MM/ATandT/twotone.tar.gz"
 matrix_download "Transport" "https://sparse.tamu.edu/MM/Janna/Transport.tar.gz"
-
+matrix_download "cage14" "https://sparse.tamu.edu/MM/vanHeukelum/cage14.tar.gz"
+matrix_download "torso1" "https://sparse.tamu.edu/MM/Norris/torso1.tar.gz"
+matrix_download "memchip" "https://sparse.tamu.edu/MM/Freescale/memchip.tar.gz"
 
 echo "Compiling with MPI and OpenMP..."
 
@@ -58,24 +60,46 @@ fi
 echo "Compilation completed!"
 
 
-RESULTS_FILE="../results/time_results.csv"
-echo "matrix,type,size,time_ms,mflops" > "$RESULTS_FILE"
+RESULTS_FILE_WEAK="../results/time_results_weak.csv"
+RESULTS_FILE_STRONG="../results/time_results_strong.csv"
+
+echo "matrix,size,time_comunication_ms,time_multiplication_ms,mflops" > "$RESULTS_FILE_WEAK"
+echo "matrix,size,time_comunication_ms,time_multiplication_ms,mflops" > "$RESULTS_FILE_STRONG"
+
 
 
 echo "Starting Strong Scaling..."
 
 
-# STR_MATRIX="../data/twotone.mtx"
-# for procs in 1 2 4 8 16 32 64 128; do
-#     echo "Strong Scaling: $procs processes"
-#     mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
-# done
+STR_MATRIX="../data/twotone.mtx"
+for procs in 1 2 4 8 16 32 64 128; do
+    echo "Strong Scaling: $procs processes"
+    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
+done
 
-# STR_MATRIX="../data/Transport.mtx"
-# for procs in 1 2 4 8 16 32 64 128; do
-#     echo "Strong Scaling: $procs processes"
-#     mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
-# done
+STR_MATRIX="../data/Transport.mtx"
+for procs in 1 2 4 8 16 32 64 128; do
+    echo "Strong Scaling: $procs processes"
+    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
+done
+
+STR_MATRIX="../data/cage14.mtx"
+for procs in 1 2 4 8 16 32 64 128; do
+    echo "Strong Scaling: $procs processes"
+    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
+done
+
+STR_MATRIX="../data/torso1.mtx"
+for procs in 1 2 4 8 16 32 64 128; do
+    echo "Strong Scaling: $procs processes"
+    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
+done
+
+STR_MATRIX="../data/memchip.mtx"
+for procs in 1 2 4 8 16 32 64 128; do
+    echo "Strong Scaling: $procs processes"
+    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
+done
 
 echo "Starting Weak Scaling..."
 

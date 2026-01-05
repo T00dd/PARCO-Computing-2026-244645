@@ -16,9 +16,11 @@
 char* matrix = NULL;
 char* scaling_type = NULL;
 char* parallelization = NULL;
-char* results = "../results/time_results.csv";
+char* results_ss = "../results/time_results_strong.csv";
+char* results_ws = "../results/time_results_weak.csv";
 
-csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank);
+
+csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank, int M_total);
 double* vect_generator(int N_);
 double multiplication(const csr_matrix* mat, const double* local_vector, const double* ghost_vector, int M_local, int local_N_start, int local_N_size);
 double multiplication_sequential(const csr_matrix* mat, const double* local_vector, const double* ghost_vector, int M_local, int local_N_start, int local_N_size);
@@ -74,14 +76,18 @@ int main(int argc, char *argv[]){
     MPI_Bcast(&N, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&nz, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
+    if(rank == 0) {
+        printf("Matrix dimensions: M=%d, N=%d, nz=%d\n", M, N, nz);
+    }
 
     int *send_counts = calloc(size, sizeof(int));
+
     if(rank == 0){
         int k;
         for(k = 0; k < nz; k++){
-            int target_rank = I[k] % size;  
+            int target_rank = I[k] % size;
             send_counts[target_rank]++;
-        }
+        }   
     }
 
     //telling each rank how many nz values it will receive
@@ -110,14 +116,15 @@ int main(int argc, char *argv[]){
 
         int k;
         for(k = 0; k < nz; k++){
-
-            int p = I[k] % size;
+            int p = I[k] % size; 
+            
             int pos = current_position[p];
             temp_I[p][pos] = I[k];
             temp_J[p][pos] = J[k];
             temp_Val[p][pos] = val[k];
             current_position[p]++;
         }
+
 
         for(p = 1; p < size; p++){
             MPI_Send(temp_I[p], send_counts[p], MPI_INT, p, 0, MPI_COMM_WORLD);
@@ -148,8 +155,11 @@ int main(int argc, char *argv[]){
     }
 
     //each rank call the function
-    int M_local = (M / size) + (rank < (M % size) ? 1 : 0);    
-    csr_matrix csr = coo_to_csr(M_local, local_nz, local_I, local_J, local_Val, size, rank);
+    int M_local = M / size;
+    if(rank < (M % size)) {
+        M_local++;
+    }    
+    csr_matrix csr = coo_to_csr(M_local, local_nz, local_I, local_J, local_Val, size, rank, M);
 
     int local_N_start = rank * (N / size) + (rank < (N % size) ? rank : (N % size));
     int local_N_size = (N / size) + (rank < (N % size) ? 1 : 0);
@@ -224,20 +234,31 @@ int main(int argc, char *argv[]){
 
         FILE* fp;
 
-        fp = fopen(results, "a");
-        if (fp == NULL){
-            fprintf(stderr, "ERR: impossible to open %s\n", results);
-            MPI_Abort(MPI_COMM_WORLD, -1);
-            return -1;
+        if(strcmp(scaling_type, "-ws")){
+            fp = fopen(results_ss, "a");  
+            
+            if (fp == NULL){
+                fprintf(stderr, "ERR: impossible to open %s\n", results_ss);
+                MPI_Abort(MPI_COMM_WORLD, -1);
+                return -1;
+            }
+        }else{
+            fp = fopen(results_ws, "a"); 
+            
+            if (fp == NULL){
+                fprintf(stderr, "ERR: impossible to open %s\n", results_ws);
+                MPI_Abort(MPI_COMM_WORLD, -1);
+                return -1;
+            }
         }
-
+        
         qsort(all_times_com, 10, sizeof(double), compare_doubles);
         qsort(all_times_mult, 10, sizeof(double), compare_doubles);
         double percentile_90_com = all_times_com[8];
         double percentile_90_mult = all_times_mult[8];
 
         double ms_com = percentile_90_com / 1000.0;
-        double ms_com = percentile_90_mult;
+        double ms_mult = percentile_90_mult;
         double total_flops = (2.0 * nz) / ms_mult;
         double mflops = total_flops / 1e6;
         double gflops = total_flops / 1e9;
@@ -270,48 +291,60 @@ int main(int argc, char *argv[]){
     return 0;
 }
 
-csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank){
-
+csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank, int M_total){
     csr_matrix csr_mat;
-
+    
     csr_mat.csr_col = malloc(nz_ * sizeof(int));
     csr_mat.csr_val = malloc(nz_ * sizeof(double));
     if (csr_mat.csr_col == NULL || csr_mat.csr_val == NULL) exit(1);
-
+    
     csr_mat.csr_vector = calloc((M_local + 1), sizeof(int));
     if (csr_mat.csr_vector == NULL) exit(1);
+    
 
-	int i;
-    //counting the nz elements for each row
-    for(i = 0; i < nz_; i++){
-        int local_row = I_[i] / size;
+    for(int i = 0; i < nz_; i++){
+        int global_row = I_[i];
+        int local_row = global_row / size; 
+        
+        if(local_row < 0 || local_row >= M_local) {
+            fprintf(stderr, "Rank %d: ERROR! global_row=%d -> local_row=%d out of bounds [0,%d)\n",
+                    rank, global_row, local_row, M_local);
+            MPI_Abort(MPI_COMM_WORLD, -1);
+        }
+        
         csr_mat.csr_vector[local_row + 1]++;
     }
-
-    //prefix sum
-    for (i = 1; i <= M_local; i++){
+    
+    //prefix sum 
+    for (int i = 1; i <= M_local; i++){
         csr_mat.csr_vector[i] += csr_mat.csr_vector[i-1];
     }
-
-    //reordering 
+    
+    //reordering
     int* row_pos = malloc((M_local + 1) * sizeof(int));
     if (row_pos == NULL) exit(1);
     memcpy(row_pos, csr_mat.csr_vector, (M_local + 1) * sizeof(int));
-
-    for (i = 0; i < nz_; i++) {
-        int local_row = I_[i] / size;
+    
+    for (int i = 0; i < nz_; i++) {
+        int global_row = I_[i];
+        int local_row = global_row / size;
         int dest_idx = row_pos[local_row];
-
+        
         csr_mat.csr_col[dest_idx] = J_[i];
         csr_mat.csr_val[dest_idx] = val_[i];
-
+        
         row_pos[local_row]++;
     }
-
+    
     free(row_pos);
-
+    
+    csr_mat.ghost_count = 0;
+    csr_mat.ghost_indices = NULL;
+    
     return csr_mat;
 }
+
+
 
 double* vect_generator(int N_){
     double* vect = malloc(N_ * sizeof(double));
@@ -392,6 +425,7 @@ double multiplication_sequential(const csr_matrix* mat, const double* local_vect
         res_vect[i] = 0.0;
     }
 
+
     start = MPI_Wtime();
     for(i = 0; i < M_local; i++){
 
@@ -403,13 +437,24 @@ double multiplication_sequential(const csr_matrix* mat, const double* local_vect
             
             if(global_col >= local_N_start && global_col < local_N_start + local_N_size) {
                 val = local_vector[global_col - local_N_start];
-            } else {
-                for(int k = 0; k < mat->ghost_count; k++) {
-                    if(mat->ghost_indices[k] == global_col) {
-                        val = ghost_vector[k];
+            }else{//using binary search to optmize the search of the ghost
+                int left = 0;
+                int right = mat->ghost_count - 1;
+                int ghost_idx = -1;
+                
+                while(left <= right) {
+                    int mid = left + (right - left) / 2;
+                    if(mat->ghost_indices[mid] == global_col) {
+                        ghost_idx = mid;
                         break;
+                    } else if(mat->ghost_indices[mid] < global_col) {
+                        left = mid + 1;
+                    } else {
+                        right = mid - 1;
                     }
                 }
+                
+                val = (ghost_idx >= 0) ? ghost_vector[ghost_idx] : 0.0;
             }
             
             sum += mat->csr_val[j] * val;
