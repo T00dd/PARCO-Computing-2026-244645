@@ -6,8 +6,20 @@ mkdir -p ../results
 
 PARALLEL_MODE=0
 
-if [ "$PARAL" -eq 1 ]; then
-	PARALLEL_MODE=1
+while getopts "p" opt; do
+  case $opt in
+    p)
+      echo "Flag -p: parallelization mode activated"
+      PARALLEL_MODE=1 
+      ;;
+    \?)
+      echo "Error: option -$OPTARG invalid." >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$PARALLEL_MODE" -eq 1 ]; then
 	RESULTS_FILE_WEAK="../results/time_results_weak_parall.csv"
 	RESULTS_FILE_STRONG="../results/time_results_strong_parall.csv"
 else
@@ -86,34 +98,32 @@ echo "matrix,size,time_comunication_ms,time_multiplication_ms,mflops" > "$RESULT
 
 echo "Starting Strong Scaling..."
 
-if [ "$PARALLEL_MODE" -eq 1 ]; then
 	for matrix in "${MATRICES[@]}"; do
 		for procs in 1 2 4 8 16 32 64 128; do
 			echo "Strong Scaling: $procs processes"
-			mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss" "-on"
+			if [ "$PARALLEL_MODE" -eq 1 ]; then
+				mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss" "-on"
+			else
+				mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss"
+			fi
 		done
 	done
-else
-	for matrix in "${MATRICES[@]}"; do
-		for procs in 1 2 4 8 16 32 64 128; do
-			echo "Strong Scaling: $procs processes"
-			mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss"
-		done
-	done
-fi
 
 echo "Starting Weak Scaling..."
 
-if [ "$PARALLEL_MODE" -eq 0 ]; then
-	for procs in 1 2 4 8 16 32 64 128; do
-		WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
-		if [ -f "$WEAK_MATRIX" ]; then
-			echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
-			mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
+for procs in 1 2 4 8 16 32 64 128; do
+	WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
+	if [ -f "$WEAK_MATRIX" ]; then
+		echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
+		if [ "$PARALLEL_MODE" -eq 1 ]; then
+			mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws" "-on"
 		else
-			echo "Warning: $WEAK_MATRIX not found, skipping."
+			mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
 		fi
-	done
-fi
+	else
+		echo "Warning: $WEAK_MATRIX not found, skipping."
+	fi
+done
+
 
 echo "Benchmarks completed!"

@@ -7,7 +7,6 @@
 
 #PBS -q short_cpuQ
 #PBS -l walltime=06:00:00
-# Configurazione per 128 processi (es. 2 nodi da 64 core o adattalo al tuo cluster)
 #PBS -l select=2:ncpus=64:mpiprocs=64:mem=64gb
 
 #PBS -M giovanni.todesco@studenti.unitn.it
@@ -15,13 +14,15 @@
 #PBS -m b
 #PBS -m e
 
-# Caricamento moduli necessari
 module load gcc91
-module load openmpi-3.0.0 # Assicurati che sia il modulo corretto del cluster
+module load openmpi-3.0.0 
 
-# Vai alla directory dove si trova lo script
 cd "$PBS_O_WORKDIR"
 
-# Rendi lo script eseguibile e lancialo
 chmod +x benchmark.sh
-./benchmark.sh
+
+if [ "${PARALLEL:-0}" -eq 0 ]; then
+    ./benchmark.sh
+else
+    ./benchmark.sh -p
+fi
