@@ -367,48 +367,57 @@ double multiplication(const csr_matrix* mat, const double* local_vector, const d
         return -1.0;
     }
 
-    int i, j;
-    //#pragma omp parallel for schedule(static)
+    omp_set_schedule(omp_sched_static, 1000);
+
+    int i;
+    #pragma omp parallel for schedule(static)
     for (i = 0; i < M_local; i++){
         res_vect[i] = 0.0;
     }
-    
 
     start = MPI_Wtime();
-    //#pragma omp parallel for default(none) shared(mat, vector, res_vect, M_local) private(i, j) schedule(runtime)
+    #pragma omp parallel for default(none) shared(mat, local_vector, ghost_vector, res_vect, M_local, local_N_start, local_N_size) private(i) schedule(runtime)
     for(i = 0; i < M_local; i++){
-
         double sum = 0.0;
 
-        for(j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
+        for(int j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
             int global_col = mat->csr_col[j];
             double val;
             
-            //we need to verify if the column is local or not
             if(global_col >= local_N_start && global_col < local_N_start + local_N_size) {
                 val = local_vector[global_col - local_N_start];
             } else {
-                for(int k = 0; k < mat->ghost_count; k++) {
-                    if(mat->ghost_indices[k] == global_col) {
-                        val = ghost_vector[k];
+                int left = 0;
+                int right = mat->ghost_count - 1;
+                int ghost_idx = -1;
+                
+                while(left <= right) {
+                    int mid = left + (right - left) / 2;
+                    if(mat->ghost_indices[mid] == global_col) {
+                        ghost_idx = mid;
                         break;
+                    } else if(mat->ghost_indices[mid] < global_col) {
+                        left = mid + 1;
+                    } else {
+                        right = mid - 1;
                     }
                 }
+                
+                val = (ghost_idx >= 0) ? ghost_vector[ghost_idx] : 0.0;
             }
-            
             sum += mat->csr_val[j] * val;
         }
 
         res_vect[i] = sum;
     }
     finish = MPI_Wtime();
-    
 
     elapsed = finish - start;
     free(res_vect);
 
     return (elapsed * 1000);
 }
+
 
 double multiplication_sequential(const csr_matrix* mat, const double* local_vector, const double* ghost_vector, int M_local, int local_N_start, int local_N_size){
 

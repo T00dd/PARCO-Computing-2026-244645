@@ -4,6 +4,17 @@ cd "$PBS_O_WORKDIR/../src"
 mkdir -p ../data
 mkdir -p ../results
 
+PARALLEL_MODE=0
+
+if [ "$PARAL" -eq 1 ]; then
+	PARALLEL_MODE=1
+	RESULTS_FILE_WEAK="../results/time_results_weak_parall.csv"
+	RESULTS_FILE_STRONG="../results/time_results_strong_parall.csv"
+else
+	RESULTS_FILE_WEAK="../results/time_results_weak.csv"
+	RESULTS_FILE_STRONG="../results/time_results_strong.csv"
+
+fi
 
 matrix_download(){
 
@@ -49,6 +60,12 @@ matrix_download "cage14" "https://sparse.tamu.edu/MM/vanHeukelum/cage14.tar.gz"
 matrix_download "torso1" "https://sparse.tamu.edu/MM/Norris/torso1.tar.gz"
 matrix_download "memchip" "https://sparse.tamu.edu/MM/Freescale/memchip.tar.gz"
 
+MATRICES=(	"../data/twotone.mtx"
+			"../data/Transport.mtx"
+			"../data/cage14.mtx"
+			"../data/torso1.mtx"
+			"../data/memchip.mtx"	)
+
 echo "Compiling with MPI and OpenMP..."
 
 
@@ -60,8 +77,7 @@ fi
 echo "Compilation completed!"
 
 
-RESULTS_FILE_WEAK="../results/time_results_weak.csv"
-RESULTS_FILE_STRONG="../results/time_results_strong.csv"
+
 
 echo "matrix,size,time_comunication_ms,time_multiplication_ms,mflops" > "$RESULTS_FILE_WEAK"
 echo "matrix,size,time_comunication_ms,time_multiplication_ms,mflops" > "$RESULTS_FILE_STRONG"
@@ -70,48 +86,34 @@ echo "matrix,size,time_comunication_ms,time_multiplication_ms,mflops" > "$RESULT
 
 echo "Starting Strong Scaling..."
 
-
-STR_MATRIX="../data/twotone.mtx"
-for procs in 1 2 4 8 16 32 64 128; do
-    echo "Strong Scaling: $procs processes"
-    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
-done
-
-STR_MATRIX="../data/Transport.mtx"
-for procs in 1 2 4 8 16 32 64 128; do
-    echo "Strong Scaling: $procs processes"
-    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
-done
-
-STR_MATRIX="../data/cage14.mtx"
-for procs in 1 2 4 8 16 32 64 128; do
-    echo "Strong Scaling: $procs processes"
-    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
-done
-
-STR_MATRIX="../data/torso1.mtx"
-for procs in 1 2 4 8 16 32 64 128; do
-    echo "Strong Scaling: $procs processes"
-    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
-done
-
-STR_MATRIX="../data/memchip.mtx"
-for procs in 1 2 4 8 16 32 64 128; do
-    echo "Strong Scaling: $procs processes"
-    mpirun -np $procs ./spmv_mpi_benchmark "$STR_MATRIX" "-ss"
-done
+if [ "$PARALLEL_MODE" -eq 1 ]; then
+	for matrix in "${MATRICES[@]}"; do
+		for procs in 1 2 4 8 16 32 64 128; do
+			echo "Strong Scaling: $procs processes"
+			mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss" "-on"
+		done
+	done
+else
+	for matrix in "${MATRICES[@]}"; do
+		for procs in 1 2 4 8 16 32 64 128; do
+			echo "Strong Scaling: $procs processes"
+			mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss"
+		done
+	done
+fi
 
 echo "Starting Weak Scaling..."
 
-
-for procs in 1 2 4 8 16 32 64 128; do
-    WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
-    if [ -f "$WEAK_MATRIX" ]; then
-        echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
-        mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
-    else
-        echo "Warning: $WEAK_MATRIX not found, skipping."
-    fi
-done
+if [ "$PARALLEL_MODE" -eq 0 ]; then
+	for procs in 1 2 4 8 16 32 64 128; do
+		WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
+		if [ -f "$WEAK_MATRIX" ]; then
+			echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
+			mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
+		else
+			echo "Warning: $WEAK_MATRIX not found, skipping."
+		fi
+	done
+fi
 
 echo "Benchmarks completed!"
