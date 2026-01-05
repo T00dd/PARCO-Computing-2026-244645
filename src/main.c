@@ -264,7 +264,7 @@ int main(int argc, char *argv[]){
 
         double ms_com = percentile_90_com / 1000.0;
         double ms_mult = percentile_90_mult;
-        double total_flops = (2.0 * nz) / ms_mult;
+        double total_flops = (2.0 * nz) / (ms_mult*1000.0);
         double mflops = total_flops / 1e6;
         double gflops = total_flops / 1e9;
 
@@ -306,8 +306,8 @@ csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int 
     csr_mat.csr_vector = calloc((M_local + 1), sizeof(int));
     if (csr_mat.csr_vector == NULL) exit(1);
     
-
-    for(int i = 0; i < nz_; i++){
+    int i;
+    for(i = 0; i < nz_; i++){
         int global_row = I_[i];
         int local_row = global_row / size; 
         
@@ -321,7 +321,7 @@ csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int 
     }
     
     //prefix sum 
-    for (int i = 1; i <= M_local; i++){
+    for (i = 1; i <= M_local; i++){
         csr_mat.csr_vector[i] += csr_mat.csr_vector[i-1];
     }
     
@@ -330,7 +330,7 @@ csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int 
     if (row_pos == NULL) exit(1);
     memcpy(row_pos, csr_mat.csr_vector, (M_local + 1) * sizeof(int));
     
-    for (int i = 0; i < nz_; i++) {
+    for (i = 0; i < nz_; i++) {
         int global_row = I_[i];
         int local_row = global_row / size;
         int dest_idx = row_pos[local_row];
@@ -384,8 +384,8 @@ double multiplication(const csr_matrix* mat, const double* local_vector, const d
     #pragma omp parallel for default(none) shared(mat, local_vector, ghost_vector, res_vect, M_local, local_N_start, local_N_size) private(i) schedule(runtime)
     for(i = 0; i < M_local; i++){
         double sum = 0.0;
-
-        for(int j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
+        int j;
+        for(j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
             int global_col = mat->csr_col[j];
             double val;
             

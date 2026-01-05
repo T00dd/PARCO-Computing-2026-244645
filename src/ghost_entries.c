@@ -70,7 +70,8 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     int remainder = N % size;
     
     //counting how many ghosts i want from each rank
-    for(int i = 0; i < csr->ghost_count; i++){
+    int i;
+    for(i = 0; i < csr->ghost_count; i++){
         int global_col = csr->ghost_indices[i];
         int owner_rank;
         
@@ -94,7 +95,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     
     //initialising buffers
     int total_send = 0, total_recv = 0;
-    for(int i = 0; i < size; i++){
+    for(i = 0; i < size; i++){
         total_send += send_counts[i];
         total_recv += recv_counts[i];
     }
@@ -111,12 +112,12 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     
     int* recv_offsets = malloc(size * sizeof(int));
     recv_offsets[0] = 0;
-    for(int i = 1; i < size; i++){
+    for(i = 1; i < size; i++){
         recv_offsets[i] = recv_offsets[i-1] + recv_counts[i-1];
     }
     
     //we receive the indices that other ranks ask for    
-    for(int i = 0; i < size; i++){
+    for(i = 0; i < size; i++){
         if(recv_counts[i] > 0){
             MPI_Irecv(&indices_others_request[recv_offsets[i]], recv_counts[i], MPI_INT, i, 0, MPI_COMM_WORLD, &requests[req_count++]);
         }
@@ -125,13 +126,13 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
      //we prepare the indices that this rank need
     int* send_offsets = malloc(size * sizeof(int));
     send_offsets[0] = 0;
-    for(int i = 1; i < size; i++){
+    for(i = 1; i < size; i++){
         send_offsets[i] = send_offsets[i-1] + send_counts[i-1];
     }
     
 
     int* current_send_pos = calloc(size, sizeof(int));
-    for(int i = 0; i < csr->ghost_count; i++){
+    for(i = 0; i < csr->ghost_count; i++){
         int global_col = csr->ghost_indices[i];
         int owner_rank;
         
@@ -147,7 +148,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     }
     
     //we send the indices
-    for(int i = 0; i < size; i++){
+    for(i = 0; i < size; i++){
         if(send_counts[i] > 0){
             MPI_Isend(&indices_i_request[send_offsets[i]], send_counts[i], MPI_INT, i, 0, MPI_COMM_WORLD, &requests[req_count++]);
         }
@@ -156,7 +157,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     MPI_Waitall(req_count, requests, MPI_STATUSES_IGNORE);
     
     //we prepare the values to send
-    for(int i = 0; i < total_recv; i++){
+    for(i = 0; i < total_recv; i++){
         int global_idx = indices_others_request[i];
         
         if(global_idx < 0 || global_idx >= N) {
@@ -186,13 +187,13 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     //we exchange the values
     req_count = 0;
     
-    for(int i = 0; i < size; i++){
+    for(i = 0; i < size; i++){
         if(send_counts[i] > 0){
             MPI_Irecv(&values_i_receive[send_offsets[i]], send_counts[i], MPI_DOUBLE, i, 1, MPI_COMM_WORLD, &requests[req_count++]);
         }
     }
     
-    for(int i = 0; i < size; i++){
+    for(i = 0; i < size; i++){
         if(recv_counts[i] > 0){
             MPI_Isend(&values_i_send[recv_offsets[i]], recv_counts[i], MPI_DOUBLE, i, 1, MPI_COMM_WORLD, &requests[req_count++]);
         }
@@ -202,7 +203,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     
     //we copy the values in the final array (ghost_vector)
     memset(current_send_pos, 0, size * sizeof(int));
-    for(int i = 0; i < csr->ghost_count; i++){
+    for(i = 0; i < csr->ghost_count; i++){
         int global_col = csr->ghost_indices[i];
         int owner_rank;
         
