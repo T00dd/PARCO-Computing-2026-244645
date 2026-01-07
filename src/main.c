@@ -393,6 +393,7 @@ double multiplication(const csr_matrix* mat, const double* extended_column_vect,
     }
 
     start = MPI_Wtime();
+    
     #pragma omp parallel for default(none) shared(mat, extended_column_vect, res_vect, M_local) private(i) schedule(runtime)    
     for(i = 0; i < M_local; i++){
         double sum = 0.0;

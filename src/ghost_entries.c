@@ -54,8 +54,9 @@ void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int r
 void renumber_column_indices(csr_matrix* csr, int M_local, int local_N_start, int local_N_size) {
     
     //renumbering every column indices on csr matrix
-    for(int i = 0; i < M_local; i++){
-        for(int j = csr->csr_vector[i]; j < csr->csr_vector[i+1]; j++){
+    int i, j;
+    for(i = 0; i < M_local; i++){
+        for(j = csr->csr_vector[i]; j < csr->csr_vector[i+1]; j++){
             int global_col = csr->csr_col[j];
             
             //local column
