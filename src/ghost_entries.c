@@ -51,6 +51,49 @@ void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int r
     free(temp_cols);
 }
 
+void renumber_column_indices(csr_matrix* csr, int M_local, int local_N_start, int local_N_size) {
+    
+    //renumbering every column indices on csr matrix
+    for(int i = 0; i < M_local; i++){
+        for(int j = csr->csr_vector[i]; j < csr->csr_vector[i+1]; j++){
+            int global_col = csr->csr_col[j];
+            
+            //local column
+            if(global_col >= local_N_start && global_col < local_N_start + local_N_size){
+                // Mappa a [0, local_N_size)
+                csr->csr_col[j] = global_col - local_N_start;
+            }else{//ghost column
+
+                //binary search in ghost_indices (already ordered)
+                int left = 0;
+                int right = csr->ghost_count - 1;
+                int ghost_pos = -1;
+                
+                while(left <= right){
+                    int mid = left + (right - left) / 2;
+                    if(csr->ghost_indices[mid] == global_col){
+                        ghost_pos = mid;
+                        break;
+                    }else if(csr->ghost_indices[mid] < global_col){
+                        left = mid + 1;
+                    }else{
+                        right = mid - 1;
+                    }
+                }
+                
+
+                //mapping [local_N_size, local_N_size + ghost_count)
+                if(ghost_pos >= 0){
+                    csr->csr_col[j] = local_N_size + ghost_pos;
+                }else{
+                    fprintf(stderr, "ERROR: Ghost index %d not found in ghost_indices!\n", global_col);
+                }
+            }
+        }
+    }
+}
+
+
 void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double** ghost_vector_ptr, int N, int size, int rank, int local_N_start, int local_N_size){
     
     //space allocation for ghosts vectors

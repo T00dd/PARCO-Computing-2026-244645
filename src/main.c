@@ -22,9 +22,10 @@ char* results_ws = "../results/time_results_weak.csv";
 
 csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank, int M_total);
 double* vect_generator(int N_);
-double multiplication(const csr_matrix* mat, const double* local_vector, const double* ghost_vector, int M_local, int local_N_start, int local_N_size);
-double multiplication_sequential(const csr_matrix* mat, const double* local_vector, const double* ghost_vector, int M_local, int local_N_start, int local_N_size);
+double multiplication(const csr_matrix* mat, const double* extended_column_vect, int M_local);
+double multiplication_sequential(const csr_matrix* mat, const double* extended_column_vect, int M_local);
 int compare_doubles(const void *a, const void *b);
+
 
 int main(int argc, char *argv[]){
 
@@ -202,6 +203,14 @@ int main(int argc, char *argv[]){
     }
 
     identify_ghost_entries(&csr, M_local, N, size, rank, local_N_start, local_N_size);
+    renumber_column_indices(&csr, M_local, local_N_start, local_N_size);
+
+    int extended_size = local_N_size + csr.ghost_count;
+    double* extended_column_vect = malloc(extended_size * sizeof(double));
+
+    //copiamo solo la parte locale
+    memcpy(extended_column_vect, local_random_vector, local_N_size * sizeof(double));
+
 
     double local_time_multiplication, global_time_comunication, global_time_multiplication;
     double all_times_com[10];
@@ -215,12 +224,15 @@ int main(int argc, char *argv[]){
         //TIME FOR COMUNICATION
         double start_local_time_comunication = MPI_Wtime();
         exchange_ghost_entries(&csr, local_random_vector, &ghost_vector, N, size, rank, local_N_start, local_N_size);
+        if(csr.ghost_count > 0){//cpiamo anche la parte ghost
+            memcpy(extended_column_vect + local_N_size, ghost_vector, csr.ghost_count * sizeof(double));
+        }
         double end_local_time_comunication =MPI_Wtime();
         double local_time_comunication = end_local_time_comunication - start_local_time_comunication;
 
 
         //TIME FOR MULTIPLICATION
-        local_time_multiplication = multiplication(&csr, local_random_vector, ghost_vector, M_local, local_N_start, local_N_size);
+        local_time_multiplication = multiplication(&csr, extended_column_vect, M_local);            
         
         MPI_Reduce(&local_time_comunication, &global_time_comunication, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&local_time_multiplication, &global_time_multiplication, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
@@ -262,7 +274,7 @@ int main(int argc, char *argv[]){
         double percentile_90_com = all_times_com[8];
         double percentile_90_mult = all_times_mult[8];
 
-        double ms_com = percentile_90_com / 1000.0;
+        double ms_com = percentile_90_com * 1000.0;
         double ms_mult = percentile_90_mult;
         double total_flops = (2.0 * nz) / (ms_mult/1000.0);
         double mflops = total_flops / 1e6;
@@ -281,6 +293,7 @@ int main(int argc, char *argv[]){
 
     }
     
+    free(extended_column_vect);
     free(local_I);
     free(local_J);
     free(local_Val);
@@ -312,8 +325,7 @@ csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int 
         int local_row = global_row / size; 
         
         if(local_row < 0 || local_row >= M_local) {
-            fprintf(stderr, "Rank %d: ERROR! global_row=%d -> local_row=%d out of bounds [0,%d)\n",
-                    rank, global_row, local_row, M_local);
+            fprintf(stderr, "Rank %d: ERROR! global_row=%d -> local_row=%d out of bounds [0,%d)\n", rank, global_row, local_row, M_local);
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
         
@@ -359,10 +371,10 @@ double* vect_generator(int N_){
     return vect;    
 }
 
-double multiplication(const csr_matrix* mat, const double* local_vector, const double* ghost_vector, int M_local, int local_N_start, int local_N_size){
+double multiplication(const csr_matrix* mat, const double* extended_column_vect, int M_local){
 
     if(parallelization == NULL || strcmp(parallelization, "-on") != 0){
-        return multiplication_sequential(mat, local_vector, ghost_vector, M_local, local_N_start, local_N_size);
+        return multiplication_sequential(mat, extended_column_vect, M_local);
     }
 
     double elapsed, finish, start;
@@ -381,36 +393,12 @@ double multiplication(const csr_matrix* mat, const double* local_vector, const d
     }
 
     start = MPI_Wtime();
-    #pragma omp parallel for default(none) shared(mat, local_vector, ghost_vector, res_vect, M_local, local_N_start, local_N_size) private(i) schedule(runtime)
+    #pragma omp parallel for default(none) shared(mat, extended_column_vect, res_vect, M_local) private(i) schedule(runtime)    
     for(i = 0; i < M_local; i++){
         double sum = 0.0;
         int j;
         for(j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
-            int global_col = mat->csr_col[j];
-            double val;
-            
-            if(global_col >= local_N_start && global_col < local_N_start + local_N_size) {
-                val = local_vector[global_col - local_N_start];
-            } else {
-                int left = 0;
-                int right = mat->ghost_count - 1;
-                int ghost_idx = -1;
-                
-                while(left <= right) {
-                    int mid = left + (right - left) / 2;
-                    if(mat->ghost_indices[mid] == global_col) {
-                        ghost_idx = mid;
-                        break;
-                    } else if(mat->ghost_indices[mid] < global_col) {
-                        left = mid + 1;
-                    } else {
-                        right = mid - 1;
-                    }
-                }
-                
-                val = (ghost_idx >= 0) ? ghost_vector[ghost_idx] : 0.0;
-            }
-            sum += mat->csr_val[j] * val;
+            sum += mat->csr_val[j] * extended_column_vect[mat->csr_col[j]];
         }
 
         res_vect[i] = sum;
@@ -424,7 +412,7 @@ double multiplication(const csr_matrix* mat, const double* local_vector, const d
 }
 
 
-double multiplication_sequential(const csr_matrix* mat, const double* local_vector, const double* ghost_vector, int M_local, int local_N_start, int local_N_size){
+double multiplication_sequential(const csr_matrix* mat, const double* extended_column_vect, int M_local){
 
     double elapsed, finish, start;
     double* res_vect = malloc(M_local * sizeof(double));
@@ -446,32 +434,7 @@ double multiplication_sequential(const csr_matrix* mat, const double* local_vect
         double sum = 0.0;
 
         for(j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
-            int global_col = mat->csr_col[j];
-            double val;
-            
-            if(global_col >= local_N_start && global_col < local_N_start + local_N_size) {
-                val = local_vector[global_col - local_N_start];
-            }else{//using binary search to optmize the search of the ghost
-                int left = 0;
-                int right = mat->ghost_count - 1;
-                int ghost_idx = -1;
-                
-                while(left <= right) {
-                    int mid = left + (right - left) / 2;
-                    if(mat->ghost_indices[mid] == global_col) {
-                        ghost_idx = mid;
-                        break;
-                    } else if(mat->ghost_indices[mid] < global_col) {
-                        left = mid + 1;
-                    } else {
-                        right = mid - 1;
-                    }
-                }
-                
-                val = (ghost_idx >= 0) ? ghost_vector[ghost_idx] : 0.0;
-            }
-            
-            sum += mat->csr_val[j] * val;
+            sum += mat->csr_val[j] * extended_column_vect[mat->csr_col[j]];        
         }
 
         res_vect[i] = sum;

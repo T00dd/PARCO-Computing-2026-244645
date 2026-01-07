@@ -10,6 +10,7 @@ results/*
 scripts/spmv_mpi_benchmark
 scripts/strong_scaling*
 scripts/weak_scaling*
+plots/*.png
         
 Old_deliverable/src/spmv
 Old_deliverable/data/*.mtx
