@@ -1,6 +1,6 @@
 #include "ghost_entries.h"
 
-void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int rank,  int local_N_start, int local_N_size){
+void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int rank){
     
     
     //we allocate a temporal array for all the indices of the columns
@@ -34,7 +34,7 @@ void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int r
     csr->ghost_indices = malloc(unique_count * sizeof(int));
     
     for(i = 0; i < unique_count; i++){
-        if(temp_cols[i] < local_N_start || temp_cols[i] >= (local_N_start + local_N_size)) {
+        if(temp_cols[i] % size != rank){
             csr->ghost_indices[csr->ghost_count] = temp_cols[i];
             csr->ghost_count++;
         }
@@ -51,7 +51,7 @@ void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int r
     free(temp_cols);
 }
 
-void renumber_column_indices(csr_matrix* csr, int M_local, int local_N_start, int local_N_size) {
+void renumber_column_indices(csr_matrix* csr, int M_local, int local_N_size, int size, int rank) {
     
     //renumbering every column indices on csr matrix
     int i, j;
@@ -60,9 +60,9 @@ void renumber_column_indices(csr_matrix* csr, int M_local, int local_N_start, in
             int global_col = csr->csr_col[j];
             
             //local column
-            if(global_col >= local_N_start && global_col < local_N_start + local_N_size){
+            if(global_col % size == rank){
                 // Mappa a [0, local_N_size)
-                csr->csr_col[j] = global_col - local_N_start;
+                csr->csr_col[j] = global_col / size;
             }else{//ghost column
 
                 //binary search in ghost_indices (already ordered)
@@ -86,7 +86,7 @@ void renumber_column_indices(csr_matrix* csr, int M_local, int local_N_start, in
                 //mapping [local_N_size, local_N_size + ghost_count)
                 if(ghost_pos >= 0){
                     csr->csr_col[j] = local_N_size + ghost_pos;
-                }else{
+                } else {
                     fprintf(stderr, "ERROR: Ghost index %d not found in ghost_indices!\n", global_col);
                 }
             }
@@ -95,7 +95,7 @@ void renumber_column_indices(csr_matrix* csr, int M_local, int local_N_start, in
 }
 
 
-void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double** ghost_vector_ptr, int N, int size, int rank, int local_N_start, int local_N_size){
+void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double** ghost_vector_ptr, int N, int size, int rank, int local_N_size){
     
     //space allocation for ghosts vectors
     *ghost_vector_ptr = malloc(csr->ghost_count * sizeof(double));
@@ -117,13 +117,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     int i;
     for(i = 0; i < csr->ghost_count; i++){
         int global_col = csr->ghost_indices[i];
-        int owner_rank;
-        
-        if (global_col < remainder * (base_cols_per_rank + 1)) {
-            owner_rank = global_col / (base_cols_per_rank + 1);
-        } else {
-            owner_rank = remainder + (global_col - remainder * (base_cols_per_rank + 1)) / base_cols_per_rank;
-        }
+        int owner_rank = global_col % size;
         
         if(owner_rank < 0 || owner_rank >= size) {
             fprintf(stderr, "Rank %d: ERROR! global_col=%d -> owner_rank=%d invalid\n",
@@ -135,7 +129,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     }
     
     //we twll all the ranks how many  values we need
-    MPI_Alltoall(send_counts, 1, MPI_INT, recv_counts, 1, MPI_INT, MPI_COMM_WORLD);
+    MPI_Alltoall(send_counts, 1, MPI_INT, recv_counts, 1, MPI_INT, MPI_COMM_WORLD);    
     
     //initialising buffers
     int total_send = 0, total_recv = 0;
@@ -178,13 +172,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     int* current_send_pos = calloc(size, sizeof(int));
     for(i = 0; i < csr->ghost_count; i++){
         int global_col = csr->ghost_indices[i];
-        int owner_rank;
-        
-        if (global_col < remainder * (base_cols_per_rank + 1)) {
-            owner_rank = global_col / (base_cols_per_rank + 1);
-        } else {
-            owner_rank = remainder + (global_col - remainder * (base_cols_per_rank + 1)) / base_cols_per_rank;
-        }
+        int owner_rank = global_col % size;  // MODULO
         
         int pos = send_offsets[owner_rank] + current_send_pos[owner_rank];
         indices_i_request[pos] = global_col;
@@ -210,18 +198,11 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
         
-        int my_col_offset;
-        if (rank < remainder) {
-            my_col_offset = rank * (base_cols_per_rank + 1);
-        } else {
-            my_col_offset = remainder * (base_cols_per_rank + 1) + (rank - remainder) * base_cols_per_rank;
-        }
-        
-        int local_idx = global_idx - my_col_offset;
+        int local_idx = global_idx / size;
         
         if(local_idx < 0 || local_idx >= local_N_size) {
-            fprintf(stderr, "Rank %d: ERROR! Received request for col %d but I own [%d, %d)\n",
-                    rank, global_idx, my_col_offset, my_col_offset + local_N_size);
+            fprintf(stderr, "Rank %d: ERROR! Received request for col %d → local_idx %d out of [0,%d)\n",
+                    rank, global_idx, local_idx, local_N_size);
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
         
@@ -249,13 +230,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     memset(current_send_pos, 0, size * sizeof(int));
     for(i = 0; i < csr->ghost_count; i++){
         int global_col = csr->ghost_indices[i];
-        int owner_rank;
-        
-        if (global_col < remainder * (base_cols_per_rank + 1)) {
-            owner_rank = global_col / (base_cols_per_rank + 1);
-        } else {
-            owner_rank = remainder + (global_col - remainder * (base_cols_per_rank + 1)) / base_cols_per_rank;
-        }
+        int owner_rank = global_col % size;  // MODULO
         
         int pos = send_offsets[owner_rank] + current_send_pos[owner_rank];
         (*ghost_vector_ptr)[i] = values_i_receive[pos];

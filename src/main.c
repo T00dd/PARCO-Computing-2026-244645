@@ -155,9 +155,14 @@ int main(int argc, char *argv[]){
     if(rank < (M % size)) {
         M_local++;
     }    
+
+    int local_N_size = N / size;
+    if(rank < (N % size)) {
+        local_N_size++;
+    }
+
     csr_matrix csr = coo_to_csr(M_local, local_nz, local_I, local_J, local_Val, size, rank, M);
 
-    int local_N_size = (N + size - 1) / size;
     int local_N_start = rank * local_N_size;
     if(local_N_start + local_N_size > N) {
         local_N_size = N - local_N_start;
@@ -172,38 +177,33 @@ int main(int argc, char *argv[]){
     //allocating space for the random vector on all the ranks
     double *local_random_vector = malloc(local_N_size * sizeof(double));
 
-    int *scatter_counts = NULL;
-    int *scatter_offset = NULL;
-    double *global_random_vector = NULL;
-    if(rank == 0){
-        global_random_vector = vect_generator(N);
-    }
-
     //distribution of th erandom vector
     if(rank == 0){
-        int k;
-        for(k = 0; k < N; k++){
-            int target_rank = k % size;
+    int local_idx = 0;
+    int k;
+    for(k = 0; k < N; k++){
+        int target_rank = k % size;
+        
+        if(target_rank == 0){
+            local_random_vector[local_idx++] = global_random_vector[k];
+        } else {
             MPI_Send(&global_random_vector[k], 1, MPI_DOUBLE, target_rank, k, MPI_COMM_WORLD);
         }
-        free(global_random_vector);
-    } else {
-        int k;
-        for(k = 0; k < local_N_size; k++){
-            int global_idx = local_N_start + k;
-            MPI_Recv(&local_random_vector[k], 1, MPI_DOUBLE, 0, global_idx, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        }
     }
-
-
-    if(rank== 0){
-        free(global_random_vector);
-        free(scatter_counts);
-        free(scatter_offset);
+    free(global_random_vector);
+    
+} else {
+    int k;
+    for(k = 0; k < local_N_size; k++){
+        int global_idx = rank + k * size;
+        MPI_Recv(&local_random_vector[k], 1, MPI_DOUBLE, 0, global_idx, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
+}
 
-    identify_ghost_entries(&csr, M_local, N, size, rank, local_N_start, local_N_size);
-    renumber_column_indices(&csr, M_local, local_N_start, local_N_size);
+
+
+    identify_ghost_entries(&csr, M_local, N, size, rank);
+    renumber_column_indices(&csr, M_local, local_N_size, size, rank);
 
     int extended_size = local_N_size + csr.ghost_count;
     double* extended_column_vect = malloc(extended_size * sizeof(double));
@@ -223,7 +223,7 @@ int main(int argc, char *argv[]){
 
         //TIME FOR COMUNICATION
         double start_local_time_comunication = MPI_Wtime();
-        exchange_ghost_entries(&csr, local_random_vector, &ghost_vector, N, size, rank, local_N_start, local_N_size);
+        exchange_ghost_entries(&csr, local_random_vector, &ghost_vector, N, size, rank, local_N_size);
         if(csr.ghost_count > 0){//cpiamo anche la parte ghost
             memcpy(extended_column_vect + local_N_size, ghost_vector, csr.ghost_count * sizeof(double));
         }
