@@ -93,7 +93,7 @@ echo "Starting Weak Scaling..."
 for procs in 1 2 4 8 16 32 64 128; do
 	WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
 	if [ -f "$WEAK_MATRIX" ]; then
-		echo "Weak Scaling: $procs processes with $WEAK_MATRIX
+		echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
 		mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
 	else
 		echo "Warning: $WEAK_MATRIX not found, skipping."

@@ -163,11 +163,6 @@ int main(int argc, char *argv[]){
 
     csr_matrix csr = coo_to_csr(M_local, local_nz, local_I, local_J, local_Val, size, rank, M);
 
-    int local_N_start = rank * local_N_size;
-    if(local_N_start + local_N_size > N) {
-        local_N_size = N - local_N_start;
-    }
-
     //generate the complete vector only on rank 0
     double *global_random_vector = NULL;
     if(rank ==  0){
@@ -179,26 +174,27 @@ int main(int argc, char *argv[]){
 
     //distribution of th erandom vector
     if(rank == 0){
-    int local_idx = 0;
-    int k;
-    for(k = 0; k < N; k++){
-        int target_rank = k % size;
-        
-        if(target_rank == 0){
-            local_random_vector[local_idx++] = global_random_vector[k];
-        } else {
-            MPI_Send(&global_random_vector[k], 1, MPI_DOUBLE, target_rank, k, MPI_COMM_WORLD);
+        int local_idx = 0;
+        int k;
+        for(k = 0; k < N; k++){
+            int target_rank = k % size;
+            
+            if(target_rank == 0){
+                local_random_vector[local_idx++] = global_random_vector[k];
+            } else {
+                MPI_Send(&global_random_vector[k], 1, MPI_DOUBLE, target_rank, k, MPI_COMM_WORLD);
+            }
+        }
+
+        free(global_random_vector);
+
+    } else {
+        int k;
+        for(k = 0; k < local_N_size; k++){
+            int global_idx = rank + k * size;
+            MPI_Recv(&local_random_vector[k], 1, MPI_DOUBLE, 0, global_idx, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
     }
-    free(global_random_vector);
-    
-} else {
-    int k;
-    for(k = 0; k < local_N_size; k++){
-        int global_idx = rank + k * size;
-        MPI_Recv(&local_random_vector[k], 1, MPI_DOUBLE, 0, global_idx, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-}
 
 
 
