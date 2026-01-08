@@ -15,7 +15,7 @@
 #PBS -m e
 
 module load gcc91
-module load openmpi-3.0.0 
+module load mpich-3.2.1--gcc-9.1.0 
 
 cd "$PBS_O_WORKDIR"
 

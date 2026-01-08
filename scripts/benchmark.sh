@@ -7,8 +7,8 @@ mkdir -p ../results
 PARALLEL_MODE=0
 
 
-RESULTS_FILE_WEAK="../results/time_results_weak_parall.csv"
-RESULTS_FILE_STRONG="../results/time_results_strong_parall.csv"
+RESULTS_FILE_WEAK="../results/time_results_weak.csv"
+RESULTS_FILE_STRONG="../results/time_results_strong.csv"
 
 
 matrix_download(){
