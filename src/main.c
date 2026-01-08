@@ -23,7 +23,6 @@ char* results_ws = "../results/time_results_weak.csv";
 csr_matrix coo_to_csr(int M_local, int nz_, int *I_, int* J_, double* val_, int size, int rank, int M_total);
 double* vect_generator(int N_);
 double multiplication(const csr_matrix* mat, const double* extended_column_vect, int M_local);
-double multiplication_sequential(const csr_matrix* mat, const double* extended_column_vect, int M_local);
 int compare_doubles(const void *a, const void *b);
 
 
@@ -36,11 +35,10 @@ int main(int argc, char *argv[]){
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    if(argc < 3 || argc > 4){
+    if(argc != 3){
         if(rank == 0){
-            printf("Usage: mpirun -n num_proc %s [path of the matrix] [type of scaling] [node parallelization on]\n", argv[0]);
+            printf("Usage: mpirun -n num_proc %s [path of the matrix] [type of scaling]\n", argv[0]);
             printf("'-ws' for weak scaling, '-ss' for strong scaling\n");
-            printf("'-on' If you want to activate parallelization in every node\n");
         }
         MPI_Finalize();
         return -1;
@@ -48,9 +46,6 @@ int main(int argc, char *argv[]){
 
     matrix = argv[1];
     scaling_type = argv[2];
-    if(argc == 4){
-        parallelization = argv[3];
-    }
     
     if(strcmp(scaling_type, "-ss") && strcmp(scaling_type, "-ws")){
         if(rank == 0){
@@ -58,11 +53,6 @@ int main(int argc, char *argv[]){
         }
         MPI_Finalize();
         return -1;
-    }
-
-    if(argc == 4){
-        results_ss = "../results/time_results_strong_parall.csv";
-        results_ws = "../results/time_results_weak_parall.csv";
     }
 
     double *val = NULL;
@@ -167,8 +157,11 @@ int main(int argc, char *argv[]){
     }    
     csr_matrix csr = coo_to_csr(M_local, local_nz, local_I, local_J, local_Val, size, rank, M);
 
-    int local_N_start = rank * (N / size) + (rank < (N % size) ? rank : (N % size));
-    int local_N_size = (N / size) + (rank < (N % size) ? 1 : 0);
+    int local_N_size = (N + size - 1) / size;
+    int local_N_start = rank * local_N_size;
+    if(local_N_start + local_N_size > N) {
+        local_N_size = N - local_N_start;
+    }
 
     //generate the complete vector only on rank 0
     double *global_random_vector = NULL;
@@ -181,21 +174,28 @@ int main(int argc, char *argv[]){
 
     int *scatter_counts = NULL;
     int *scatter_offset = NULL;
-    if(rank==0){
-        scatter_counts = malloc(size*sizeof(int));
-        scatter_offset = malloc(size*sizeof(int));
-    
-        int p;
-        for(p = 0; p < size; p++){
-            int p_start = p * (N / size) + (p < (N % size) ? p : (N % size));
-            int p_size = (N / size) + (p < (N % size) ? 1 : 0);
-            scatter_counts[p] = p_size;
-            scatter_offset[p] = p_start;
+    double *global_random_vector = NULL;
+    if(rank == 0){
+        global_random_vector = vect_generator(N);
+    }
+
+    //distribution of th erandom vector
+    if(rank == 0){
+        int k;
+        for(k = 0; k < N; k++){
+            int target_rank = k % size;
+            MPI_Send(&global_random_vector[k], 1, MPI_DOUBLE, target_rank, k, MPI_COMM_WORLD);
+        }
+        free(global_random_vector);
+    } else {
+        int k;
+        for(k = 0; k < local_N_size; k++){
+            int global_idx = local_N_start + k;
+            MPI_Recv(&local_random_vector[k], 1, MPI_DOUBLE, 0, global_idx, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
     }
-    
-    MPI_Scatterv(global_random_vector, scatter_counts, scatter_offset, MPI_DOUBLE, local_random_vector, local_N_size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    
+
+
     if(rank== 0){
         free(global_random_vector);
         free(scatter_counts);
@@ -277,12 +277,11 @@ int main(int argc, char *argv[]){
         double ms_com = percentile_90_com * 1000.0;
         double ms_mult = percentile_90_mult;
         double total_flops = (2.0 * nz) / (ms_mult/1000.0);
-        double mflops = total_flops / 1e6;
         double gflops = total_flops / 1e9;
 
         printf("Prestazioni: %f GFLOPS\n", gflops);
 
-        fprintf(fp, "%s, %d, %f, %f, %f\n", matrix, size, percentile_90_com, percentile_90_mult, mflops);
+        fprintf(fp, "%s, %d, %f, %f, %f\n", matrix, size, percentile_90_com, percentile_90_mult, gflops);
 
         fclose(fp);
 
@@ -373,10 +372,6 @@ double* vect_generator(int N_){
 
 double multiplication(const csr_matrix* mat, const double* extended_column_vect, int M_local){
 
-    if(parallelization == NULL || strcmp(parallelization, "-on") != 0){
-        return multiplication_sequential(mat, extended_column_vect, M_local);
-    }
-
     double elapsed, finish, start;
     double* res_vect = malloc(M_local * sizeof(double));
     if (res_vect == NULL) {
@@ -384,58 +379,18 @@ double multiplication(const csr_matrix* mat, const double* extended_column_vect,
         return -1.0;
     }
 
-    omp_set_schedule(omp_sched_static, 1000);
-
     int i;
-    #pragma omp parallel for schedule(static)
     for (i = 0; i < M_local; i++){
         res_vect[i] = 0.0;
     }
 
     start = MPI_Wtime();
     
-    #pragma omp parallel for default(none) shared(mat, extended_column_vect, res_vect, M_local) private(i) schedule(runtime)    
     for(i = 0; i < M_local; i++){
         double sum = 0.0;
         int j;
         for(j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
             sum += mat->csr_val[j] * extended_column_vect[mat->csr_col[j]];
-        }
-
-        res_vect[i] = sum;
-    }
-    finish = MPI_Wtime();
-
-    elapsed = finish - start;
-    free(res_vect);
-
-    return (elapsed * 1000);
-}
-
-
-double multiplication_sequential(const csr_matrix* mat, const double* extended_column_vect, int M_local){
-
-    double elapsed, finish, start;
-    double* res_vect = malloc(M_local * sizeof(double));
-    if (res_vect == NULL) {
-        fprintf(stderr, "Errore di allocazione per il vettore risultato c.\n");
-        return -1.0;
-    }
-
-	int i, j;
-
-    for(i = 0; i < M_local; i++){
-        res_vect[i] = 0.0;
-    }
-
-
-    start = MPI_Wtime();
-    for(i = 0; i < M_local; i++){
-
-        double sum = 0.0;
-
-        for(j = mat->csr_vector[i]; j < mat->csr_vector[i + 1]; j++){
-            sum += mat->csr_val[j] * extended_column_vect[mat->csr_col[j]];        
         }
 
         res_vect[i] = sum;

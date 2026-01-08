@@ -21,8 +21,4 @@ cd "$PBS_O_WORKDIR"
 
 chmod +x benchmark.sh
 
-if [ "${PARALLEL:-0}" -eq 0 ]; then
-    ./benchmark.sh
-else
-    ./benchmark.sh -p
-fi
+./benchmark.sh

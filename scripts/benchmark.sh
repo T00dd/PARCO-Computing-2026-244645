@@ -6,27 +6,10 @@ mkdir -p ../results
 
 PARALLEL_MODE=0
 
-while getopts "p" opt; do
-  case $opt in
-    p)
-      echo "Flag -p: parallelization mode activated"
-      PARALLEL_MODE=1 
-      ;;
-    \?)
-      echo "Error: option -$OPTARG invalid." >&2
-      exit 1
-      ;;
-  esac
-done
 
-if [ "$PARALLEL_MODE" -eq 1 ]; then
-	RESULTS_FILE_WEAK="../results/time_results_weak_parall.csv"
-	RESULTS_FILE_STRONG="../results/time_results_strong_parall.csv"
-else
-	RESULTS_FILE_WEAK="../results/time_results_weak.csv"
-	RESULTS_FILE_STRONG="../results/time_results_strong.csv"
+RESULTS_FILE_WEAK="../results/time_results_weak_parall.csv"
+RESULTS_FILE_STRONG="../results/time_results_strong_parall.csv"
 
-fi
 
 matrix_download(){
 
@@ -91,8 +74,8 @@ echo "Compilation completed!"
 
 
 
-echo "matrix,size,time_comunication_ms,time_multiplication_ms,mflops" > "$RESULTS_FILE_WEAK"
-echo "matrix,size,time_comunication_ms,time_multiplication_ms,mflops" > "$RESULTS_FILE_STRONG"
+echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops" > "$RESULTS_FILE_WEAK"
+echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops" > "$RESULTS_FILE_STRONG"
 
 
 
@@ -101,11 +84,7 @@ echo "Starting Strong Scaling..."
 	for matrix in "${MATRICES[@]}"; do
 		for procs in 1 2 4 8 16 32 64 128; do
 			echo "Strong Scaling: $procs processes"
-			if [ "$PARALLEL_MODE" -eq 1 ]; then
-				mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss" "-on"
-			else
-				mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss"
-			fi
+			mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss"
 		done
 	done
 
@@ -114,12 +93,8 @@ echo "Starting Weak Scaling..."
 for procs in 1 2 4 8 16 32 64 128; do
 	WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
 	if [ -f "$WEAK_MATRIX" ]; then
-		echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
-		if [ "$PARALLEL_MODE" -eq 1 ]; then
-			mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws" "-on"
-		else
-			mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
-		fi
+		echo "Weak Scaling: $procs processes with $WEAK_MATRIX
+		mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
 	else
 		echo "Warning: $WEAK_MATRIX not found, skipping."
 	fi
