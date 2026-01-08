@@ -61,7 +61,7 @@ MATRICES=(	"../data/twotone.mtx"
 			"../data/torso1.mtx"
 			"../data/memchip.mtx"	)
 
-echo "Compiling with MPI and OpenMP..."
+echo "Compiling with MPI..."
 
 
 mpicc -O3 -fopenmp -I../include -o spmv_mpi_benchmark ../src/main.c ../src/mmio.c ../src/ghost_entries.c -lm
