@@ -50,14 +50,14 @@ matrix_download(){
 echo "Checking matrices..."
 
 matrix_download "twotone" "https://sparse.tamu.edu/MM/ATandT/twotone.tar.gz"
-matrix_download "Transport" "https://sparse.tamu.edu/MM/Janna/Transport.tar.gz"
-matrix_download "cage14" "https://sparse.tamu.edu/MM/vanHeukelum/cage14.tar.gz"
+matrix_download "HV15R" "https://sparse.tamu.edu/MM/Fluorem/HV15R.tar.gz"
+matrix_download "cage15" "https://sparse.tamu.edu/MM/vanHeukelum/cage15.tar.gz"
 matrix_download "torso1" "https://sparse.tamu.edu/MM/Norris/torso1.tar.gz"
 matrix_download "memchip" "https://sparse.tamu.edu/MM/Freescale/memchip.tar.gz"
 
 MATRICES=(	"../data/twotone.mtx"
-			"../data/Transport.mtx"
-			"../data/cage14.mtx"
+			"../data/HV15R.mtx"
+			"../data/cage15.mtx"
 			"../data/torso1.mtx"
 			"../data/memchip.mtx"	)
 
@@ -74,8 +74,8 @@ echo "Compilation completed!"
 
 
 
-echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops" > "$RESULTS_FILE_WEAK"
-echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops" > "$RESULTS_FILE_STRONG"
+echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops,avg_nnz,avg_comm,nnz_imbalance,comm_imbalance" > "$RESULTS_FILE_WEAK"
+echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops,avg_nnz,avg_comm,nnz_imbalance,comm_imbalance" > "$RESULTS_FILE_STRONG"
 
 
 
@@ -84,7 +84,7 @@ echo "Starting Strong Scaling..."
 	for matrix in "${MATRICES[@]}"; do
 		for procs in 1 2 4 8 16 32 64 128; do
 			echo "Strong Scaling: $procs processes"
-			mpirun -np $procs ./spmv_mpi_benchmark "$matrix" "-ss"
+			mpirun -np $procs --map-by node --bind-to core numactl --interleave=all ./spmv_mpi_benchmark "$matrix" "-ss"
 		done
 	done
 
@@ -94,7 +94,7 @@ for procs in 1 2 4 8 16 32 64 128; do
 	WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
 	if [ -f "$WEAK_MATRIX" ]; then
 		echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
-		mpirun -np $procs ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
+		mpirun -np $procs --map-by node --bind-to core numactl --interleave=all ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
 	else
 		echo "Warning: $WEAK_MATRIX not found, skipping."
 	fi

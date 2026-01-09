@@ -22,7 +22,7 @@ The script `matrices_creator.py` must be executed only in a local environment.
 > [!NOTE]
 > The generation process may take several minutes to create the full set of matrices required for the test.
 
-###### Dependencies
+#### Dependencies
 
 To run the script, ensure your local environment has:
 

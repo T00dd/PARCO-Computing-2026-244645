@@ -201,18 +201,59 @@ int main(int argc, char *argv[]){
     identify_ghost_entries(&csr, M_local, N, size, rank);
     renumber_column_indices(&csr, M_local, local_N_size, size, rank);
 
+
+    //----------METRICS TO SEE LOAD BALANCE---------------
+
+    //nz for rank balance
+    int global_min_nnz, global_max_nnz, global_sum_nnz;
+    int global_min_comm, global_max_comm, global_sum_comm;
+
+    MPI_Reduce(&local_nz, &global_min_nnz, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&local_nz, &global_max_nnz, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&local_nz, &global_sum_nnz, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    //comunication for rank balance
+    int ghost_send_count = csr.ghost_count;
+
+    int *recv_counts = calloc(size, sizeof(int));
+    int *send_counts_comm = calloc(size, sizeof(int));
+
+    int i;
+    for(i = 0; i < csr.ghost_count; i++){
+        int global_col = csr.ghost_indices[i];
+        int owner_rank = global_col % size;
+        send_counts_comm[owner_rank]++;
+    }
+
+    MPI_Alltoall(send_counts_comm, 1, MPI_INT, recv_counts, 1, MPI_INT, MPI_COMM_WORLD);
+
+    int ghost_recv_count = 0;
+    for(i = 0; i < size; i++){
+        ghost_recv_count += recv_counts[i];
+    }
+
+    int local_comm_volume = ghost_send_count + ghost_recv_count;
+
+    MPI_Reduce(&local_comm_volume, &global_min_comm, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&local_comm_volume, &global_max_comm, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&local_comm_volume, &global_sum_comm, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    free(recv_counts);
+    free(send_counts_comm);
+
+
+
     int extended_size = local_N_size + csr.ghost_count;
     double* extended_column_vect = malloc(extended_size * sizeof(double));
 
     //copiamo solo la parte locale
     memcpy(extended_column_vect, local_random_vector, local_N_size * sizeof(double));
 
-
     double local_time_multiplication, global_time_comunication, global_time_multiplication;
     double all_times_com[10];
     double all_times_mult[10];
     double *ghost_vector = NULL;
-    int i;
+
     for(i = 0; i<10; i++){
 
         MPI_Barrier(MPI_COMM_WORLD);
@@ -244,6 +285,12 @@ int main(int argc, char *argv[]){
     }
 
     if(rank == 0){
+
+        double avg_nnz = (double)global_sum_nnz / size;
+        double avg_comm = (double)global_sum_comm / size;
+        
+        double nnz_imbalance = ((double)global_max_nnz - avg_nnz) / avg_nnz * 100.0;
+        double comm_imbalance = ((double)global_max_comm - avg_comm) / avg_comm * 100.0;
 
         FILE* fp;
 
@@ -277,7 +324,7 @@ int main(int argc, char *argv[]){
 
         printf("Prestazioni: %f GFLOPS\n", gflops);
 
-        fprintf(fp, "%s, %d, %f, %f, %f\n", matrix, size, percentile_90_com, percentile_90_mult, gflops);
+        fprintf(fp, "%s, %d, %f, %f, %f, %f, %f, %f, %f\n", matrix, size, percentile_90_com, percentile_90_mult, gflops, avg_nnz, avg_comm, nnz_imbalance, comm_imbalance);
 
         fclose(fp);
 
