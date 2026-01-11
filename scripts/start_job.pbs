@@ -15,8 +15,12 @@
 #PBS -m e
 
 module load gcc91
-module load numectl
+module load numactl
 module load openmpi-4.0.4
+
+export OMPI_MCA_blt=tcp,self
+export OMPI_MCA_pml=ob1
+export OMPI_MCA_btl_openib_allow_ib=0
 
 cd "$PBS_O_WORKDIR"
 
