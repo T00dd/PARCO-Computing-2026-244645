@@ -13,6 +13,7 @@ typedef struct{
 
     int ghost_count;       
     int* ghost_indices;
+    int* ghost_to_local;
 }csr_matrix;
 
 void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int rank);

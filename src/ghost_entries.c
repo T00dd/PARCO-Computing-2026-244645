@@ -47,6 +47,19 @@ void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int r
         free(csr->ghost_indices);
         csr->ghost_indices = NULL;
     }
+
+    //we create the map ghost_to_local for faster access time
+    csr->ghost_to_local = malloc(N * sizeof(int));
+
+    //-1 means it's not a ghost
+    for(i = 0; i < N; i++){
+        csr->ghost_to_local[i] = -1;
+    }
+
+    for(i = 0; i < csr->ghost_count; i++){
+        int global_col = csr->ghost_indices[i];
+        csr->ghost_to_local[global_col] = i;
+    }
         
     free(temp_cols);
 }
@@ -65,22 +78,7 @@ void renumber_column_indices(csr_matrix* csr, int M_local, int local_N_size, int
                 csr->csr_col[j] = global_col / size;
             }else{//ghost column
 
-                //binary search in ghost_indices (already ordered)
-                int left = 0;
-                int right = csr->ghost_count - 1;
-                int ghost_pos = -1;
-                
-                while(left <= right){
-                    int mid = left + (right - left) / 2;
-                    if(csr->ghost_indices[mid] == global_col){
-                        ghost_pos = mid;
-                        break;
-                    }else if(csr->ghost_indices[mid] < global_col){
-                        left = mid + 1;
-                    }else{
-                        right = mid - 1;
-                    }
-                }
+                int ghost_pos = csr->ghost_to_local[global_col];
                 
 
                 //mapping [local_N_size, local_N_size + ghost_count)
@@ -110,9 +108,6 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     int* send_counts = calloc(size, sizeof(int));
     int* recv_counts = calloc(size, sizeof(int));
     
-    int base_cols_per_rank = N / size;
-    int remainder = N % size;
-    
     //counting how many ghosts i want from each rank
     int i;
     for(i = 0; i < csr->ghost_count; i++){
@@ -120,8 +115,7 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
         int owner_rank = global_col % size;
         
         if(owner_rank < 0 || owner_rank >= size) {
-            fprintf(stderr, "Rank %d: ERROR! global_col=%d -> owner_rank=%d invalid\n",
-                    rank, global_col, owner_rank);
+            fprintf(stderr, "Rank %d: ERROR! global_col=%d -> owner_rank=%d invalid\n", rank, global_col, owner_rank);
             MPI_Abort(MPI_COMM_WORLD, -1);
         }
         
@@ -131,122 +125,74 @@ void exchange_ghost_entries(const csr_matrix* csr, double* local_vector, double*
     //we twll all the ranks how many  values we need
     MPI_Alltoall(send_counts, 1, MPI_INT, recv_counts, 1, MPI_INT, MPI_COMM_WORLD);    
     
+
+    int* send_displs = calloc(size, sizeof(int));
+    int* recv_displs = calloc(size, sizeof(int));
+
+    //we need to know from what position starts the block for the specific rank
+    send_displs[0] = 0;
+    recv_displs[0] = 0;
+    for(i = 1; i < size; i++){
+        send_displs[i] = send_displs[i-1] + send_counts[i-1];
+        recv_displs[i] = recv_displs[i-1] + recv_counts[i-1];
+    }
+
     //initialising buffers
-    int total_send = 0, total_recv = 0;
-    for(i = 0; i < size; i++){
-        total_send += send_counts[i];
-        total_recv += recv_counts[i];
-    }
+    int total_send = send_displs[size-1] + send_counts[size-1];
+    int total_recv = recv_displs[size-1] + recv_counts[size-1];
+
     
-    
-    int* indices_i_request = malloc(total_send * sizeof(int));
-    int* indices_others_request = malloc(total_recv * sizeof(int));
-    double* values_i_receive = malloc(total_send * sizeof(double));
-    double* values_i_send = malloc(total_recv * sizeof(double));
+    int* indices_to_request = malloc(total_send * sizeof(int));
+    int* indices_requested_from_me = malloc(total_recv * sizeof(int));
     
 
-    MPI_Request* requests = malloc(2 * size * sizeof(MPI_Request));
-    int req_count = 0;
-    
-    int* recv_offsets = malloc(size * sizeof(int));
-    recv_offsets[0] = 0;
-    for(i = 1; i < size; i++){
-        recv_offsets[i] = recv_offsets[i-1] + recv_counts[i-1];
-    }
-    
-    //we receive the indices that other ranks ask for    
-    for(i = 0; i < size; i++){
-        if(recv_counts[i] > 0){
-            MPI_Irecv(&indices_others_request[recv_offsets[i]], recv_counts[i], MPI_INT, i, 0, MPI_COMM_WORLD, &requests[req_count++]);
-        }
-    }
-    
-     //we prepare the indices that this rank need
-    int* send_offsets = malloc(size * sizeof(int));
-    send_offsets[0] = 0;
-    for(i = 1; i < size; i++){
-        send_offsets[i] = send_offsets[i-1] + send_counts[i-1];
-    }
-    
-
-    int* current_send_pos = calloc(size, sizeof(int));
+    int* current_pos = calloc(size, sizeof(int));
     for(i = 0; i < csr->ghost_count; i++){
         int global_col = csr->ghost_indices[i];
-        int owner_rank = global_col % size;  // MODULO
+        int owner_rank = global_col % size;
         
-        int pos = send_offsets[owner_rank] + current_send_pos[owner_rank];
-        indices_i_request[pos] = global_col;
-        current_send_pos[owner_rank]++;
+        int pos = send_displs[owner_rank] + current_pos[owner_rank];
+        indices_to_request[pos] = global_col;
+        current_pos[owner_rank]++;
     }
-    
+
     //we send the indices
-    for(i = 0; i < size; i++){
-        if(send_counts[i] > 0){
-            MPI_Isend(&indices_i_request[send_offsets[i]], send_counts[i], MPI_INT, i, 0, MPI_COMM_WORLD, &requests[req_count++]);
-        }
-    }
-    
-    MPI_Waitall(req_count, requests, MPI_STATUSES_IGNORE);
-    
+    MPI_Alltoallv(indices_to_request, send_counts, send_displs, MPI_INT, indices_requested_from_me, recv_counts, recv_displs, MPI_INT, MPI_COMM_WORLD);
+        
     //we prepare the values to send
+    double* values_to_send = malloc(total_recv * sizeof(double));
+
     for(i = 0; i < total_recv; i++){
-        int global_idx = indices_others_request[i];
-        
-        if(global_idx < 0 || global_idx >= N) {
-            fprintf(stderr, "Rank %d: CORRUPTED request[%d] = %d (N=%d)\n",
-                    rank, i, global_idx, N);
-            MPI_Abort(MPI_COMM_WORLD, -1);
-        }
-        
-        int local_idx = global_idx / size;
-        
-        if(local_idx < 0 || local_idx >= local_N_size) {
-            fprintf(stderr, "Rank %d: ERROR! Received request for col %d → local_idx %d out of [0,%d)\n",
-                    rank, global_idx, local_idx, local_N_size);
-            MPI_Abort(MPI_COMM_WORLD, -1);
-        }
-        
-        values_i_send[i] = local_vector[local_idx];
+        int global_idx = indices_requested_from_me[i];
+        int local_idx = global_idx / size;  
+        values_to_send[i] = local_vector[local_idx];
     }
     
     //we exchange the values
-    req_count = 0;
     
-    for(i = 0; i < size; i++){
-        if(send_counts[i] > 0){
-            MPI_Irecv(&values_i_receive[send_offsets[i]], send_counts[i], MPI_DOUBLE, i, 1, MPI_COMM_WORLD, &requests[req_count++]);
-        }
-    }
+    double* values_received = malloc(total_send * sizeof(double));
     
-    for(i = 0; i < size; i++){
-        if(recv_counts[i] > 0){
-            MPI_Isend(&values_i_send[recv_offsets[i]], recv_counts[i], MPI_DOUBLE, i, 1, MPI_COMM_WORLD, &requests[req_count++]);
-        }
-    }
-    
-    MPI_Waitall(req_count, requests, MPI_STATUSES_IGNORE);
-    
+    MPI_Alltoallv(values_to_send, recv_counts, recv_displs, MPI_DOUBLE, values_received, send_counts, send_displs, MPI_DOUBLE, MPI_COMM_WORLD);
+        
     //we copy the values in the final array (ghost_vector)
-    memset(current_send_pos, 0, size * sizeof(int));
+    memset(current_pos, 0, size * sizeof(int));
     for(i = 0; i < csr->ghost_count; i++){
         int global_col = csr->ghost_indices[i];
-        int owner_rank = global_col % size;  // MODULO
-        
-        int pos = send_offsets[owner_rank] + current_send_pos[owner_rank];
-        (*ghost_vector_ptr)[i] = values_i_receive[pos];
-        current_send_pos[owner_rank]++;
+        int owner_rank = global_col % size;
+        int pos = send_displs[owner_rank] + current_pos[owner_rank];
+        (*ghost_vector_ptr)[i] = values_received[pos];
+        current_pos[owner_rank]++;
     }
     
     free(send_counts);
     free(recv_counts);
-    free(indices_i_request);
-    free(indices_others_request);
-    free(values_i_receive);
-    free(values_i_send);
-    free(requests);
-    free(send_offsets);
-    free(recv_offsets);
-    free(current_send_pos);
+    free(send_displs);
+    free(recv_displs);
+    free(indices_to_request);
+    free(indices_requested_from_me);
+    free(values_to_send);
+    free(values_received);
+    free(current_pos);
 }
 
 

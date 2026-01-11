@@ -6,6 +6,8 @@ data/twotone.mtx
 data/memchip.mtx
 data/torso1.mtx
 data/cage14.mtx
+data/cage15.mtx
+data/HV15R.mtx
 results/*
 scripts/spmv_mpi_benchmark
 scripts/strong_scaling*
