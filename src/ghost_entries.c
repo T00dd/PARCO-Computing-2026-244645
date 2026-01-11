@@ -23,7 +23,7 @@ void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int r
         temp_cols[unique_count++] = temp_cols[0];
         
         for(i = 1; i < temp_count; i++) {
-            if(temp_cols[i] != temp_cols[i-1]) {
+            if(temp_cols[i] != temp_cols[i-1]){
                 temp_cols[unique_count++] = temp_cols[i];
             }
         }
@@ -35,24 +35,29 @@ void identify_ghost_entries(csr_matrix* csr, int M_local, int N, int size, int r
     
     for(i = 0; i < unique_count; i++){
         if(temp_cols[i] % size != rank){
-            csr->ghost_indices[csr->ghost_count] = temp_cols[i];
-            csr->ghost_count++;
+            csr->ghost_indices[csr->ghost_count++] = temp_cols[i];
         }
     }
     
     //we reduce the allocated memory to the right lenght
     if(csr->ghost_count > 0) {
         csr->ghost_indices = realloc(csr->ghost_indices, csr->ghost_count * sizeof(int));
-    } else {
+    }else{
         free(csr->ghost_indices);
         csr->ghost_indices = NULL;
     }
 
     //we create the map ghost_to_local for faster access time
-    csr->ghost_to_local = malloc(N * sizeof(int));
+    int max_global_col = 0;
+    for(i = 0; i < unique_count; i++){
+        if(temp_cols[i] > max_global_col){
+            max_global_col = temp_cols[i];
+        }
+    }
 
+    csr->ghost_to_local = malloc((max_global_col + 1) * sizeof(int));
     //-1 means it's not a ghost
-    for(i = 0; i < N; i++){
+    for(i = 0; i <= max_global_col; i++){
         csr->ghost_to_local[i] = -1;
     }
 
