@@ -288,9 +288,6 @@ int main(int argc, char *argv[]){
 
         double avg_nnz = (double)global_sum_nnz / size;
         double avg_comm = (double)global_sum_comm / size;
-        
-        double nnz_imbalance = ((double)global_max_nnz - avg_nnz) / avg_nnz * 100.0;
-        double comm_imbalance = ((double)global_max_comm - avg_comm) / avg_comm * 100.0;
 
         FILE* fp;
 
@@ -324,7 +321,8 @@ int main(int argc, char *argv[]){
 
         printf("Prestazioni: %f GFLOPS\n", gflops);
 
-        fprintf(fp, "%s, %d, %f, %f, %f, %f, %f, %f, %f\n", matrix, size, percentile_90_com, percentile_90_mult, gflops, avg_nnz, avg_comm, nnz_imbalance, comm_imbalance);
+        fprintf(fp, "%s, %d, %f, %f, %f, %f, %d, %d, %f, %d, %d\n\n", matrix, size, percentile_90_com, percentile_90_mult, gflops, 
+                                    avg_nnz, global_min_nnz, global_max_nnz, avg_comm, global_min_comm, global_max_comm);
 
         fclose(fp);
 

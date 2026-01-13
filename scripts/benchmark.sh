@@ -74,8 +74,8 @@ echo "Compilation completed!"
 
 
 
-echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops,avg_nnz,avg_comm,nnz_imbalance,comm_imbalance" > "$RESULTS_FILE_WEAK"
-echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops,avg_nnz,avg_comm,nnz_imbalance,comm_imbalance" > "$RESULTS_FILE_STRONG"
+echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops,avg_nnz,global_min_nnz,global_max_nnz,avg_comm,global_min_comm,global_max_comm" > "$RESULTS_FILE_WEAK"
+echo "matrix,size,time_comunication_ms,time_multiplication_ms,gflops,avg_nnz,global_min_nnz,global_max_nnz,avg_comm,global_min_comm,global_max_comm" > "$RESULTS_FILE_STRONG"
 
 
 
@@ -83,6 +83,11 @@ echo "Starting Strong Scaling..."
 
 	for matrix in "${MATRICES[@]}"; do
 		for procs in 1 2 4 8 16 32 64 128; do
+
+			NUM_NODES=$(cat $PBS_NODEFILE | sort -u | wc -l )
+			PPN=$((procs / NUM_NODES))
+			if [ $PPN -eq 0 ]; then PPN=1; fi
+
 			echo "Strong Scaling: $procs processes"
 			mpirun -np $procs --map-by node --bind-to core numactl --interleave=all ./spmv_mpi_benchmark "$matrix" "-ss"
 		done
@@ -92,6 +97,11 @@ echo "Starting Weak Scaling..."
 
 for procs in 1 2 4 8 16 32 64 128; do
 	WEAK_MATRIX="../data/matrix_weak_${procs}.mtx"
+
+	NUM_NODES=$(cat $PBS_NODEFILE | sort -u | wc -l )
+	PPN=$((procs / NUM_NODES))
+	if [ $PPN -eq 0 ]; then PPN=1; fi
+
 	if [ -f "$WEAK_MATRIX" ]; then
 		echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
 		mpirun -np $procs --map-by node --bind-to core numactl --interleave=all ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"

@@ -7,7 +7,7 @@
 
 #PBS -q short_cpuQ
 #PBS -l walltime=06:00:00
-#PBS -l select=2:ncpus=64:mpiprocs=64:mem=32gb
+#PBS -l select=4:ncpus=32:mpiprocs=32:mem=32gb
 
 #PBS -M giovanni.todesco@studenti.unitn.it
 #PBS -m a
@@ -16,11 +16,7 @@
 
 module load gcc91
 module load numactl
-module load openmpi-4.0.4
-
-export OMPI_MCA_blt=tcp,self
-export OMPI_MCA_pml=ob1
-export OMPI_MCA_btl_openib_allow_ib=0
+module load mpich-3.2.1--gcc-9.1.0
 
 cd "$PBS_O_WORKDIR"
 
