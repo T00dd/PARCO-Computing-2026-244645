@@ -99,10 +99,11 @@ The job will be submitted to the `short_cpuQ` queue (maximum 6 hours). The scrip
 
 ###### LOCAL:
 
-To launch the job in locally, navigate to the `scripts/` folder and execute the `.sh`:
+To launch the job in locally, navigate to the `scripts/` folder make sure that the file is executable and execute the `.sh`:
 
 ```bash
-./start_job.sh
+chmod +x local_bench_test.sh
+./local_bench_test.sh
 ```
 
 ## Outputs
