@@ -321,7 +321,7 @@ int main(int argc, char *argv[]){
 
         printf("Prestazioni: %f GFLOPS\n", gflops);
 
-        fprintf(fp, "%s, %d, %f, %f, %f, %f, %d, %d, %f, %d, %d\n\n", matrix, size, percentile_90_com, percentile_90_mult, gflops, 
+        fprintf(fp, "%s, %d, %f, %f, %f, %f, %d, %d, %f, %d, %d\n", matrix, size, percentile_90_com, percentile_90_mult, gflops, 
                                     avg_nnz, global_min_nnz, global_max_nnz, avg_comm, global_min_comm, global_max_comm);
 
         fclose(fp);
