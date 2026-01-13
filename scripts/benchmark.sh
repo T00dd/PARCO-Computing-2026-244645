@@ -89,7 +89,7 @@ echo "Starting Strong Scaling..."
 			if [ $PPN -eq 0 ]; then PPN=1; fi
 
 			echo "Strong Scaling: $procs processes"
-			mpirun -np $procs --map-by node --bind-to core numactl --interleave=all ./spmv_mpi_benchmark "$matrix" "-ss"
+			mpirun -np $procs -ppn $PPN -bind-to core numactl --interleave=all ./spmv_mpi_benchmark "$matrix" "-ss"
 		done
 	done
 
@@ -104,7 +104,7 @@ for procs in 1 2 4 8 16 32 64 128; do
 
 	if [ -f "$WEAK_MATRIX" ]; then
 		echo "Weak Scaling: $procs processes with $WEAK_MATRIX"
-		mpirun -np $procs --map-by node --bind-to core numactl --interleave=all ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
+		mpirun -np $procs -ppn $PPN -bind-to core numactl --interleave=all ./spmv_mpi_benchmark "$WEAK_MATRIX" "-ws"
 	else
 		echo "Warning: $WEAK_MATRIX not found, skipping."
 	fi
