@@ -99,7 +99,7 @@ To launch the job in the cluster (that will execute all the combinations of numb
 ```bash
 qsub start_job.pbs
 ```
-The job will be submitted to the `short_cpuQ` queue (maximum 6 hours). The script is set to execute the program on 2 nodes with 32 gb of dedicated RAM each. Every node has 64 cores.
+The job will be submitted to the `short_cpuQ` queue (maximum 6 hours). The script is set to execute the program on 4 nodes with 32 gb of dedicated RAM each. Every node has 64 cores.
 
 ###### LOCAL:
 
