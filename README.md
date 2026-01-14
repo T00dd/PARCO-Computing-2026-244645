@@ -33,6 +33,9 @@ To run the script, ensure your local environment has:
 ## Project structure
 ```
 .  
+├── data/
+│   ├── syntethic matrices (for weak scaling)
+│   └── matrices for strong scaling (after the execution of the .sh)
 ├── include/  
 │   ├── mmio.h  
 │   └── timer.h  
@@ -43,6 +46,7 @@ To run the script, ensure your local environment has:
 ├── scripts/  
 │   ├── start_job.pbs  
 │   ├── benchmark.sh  
+│   ├── local_bench_test.sh  
 │   ├── matrices_creator.py 
 │   ├── strong_scaling_plot.py  
 │   └── weak_scaling_plot.py  
