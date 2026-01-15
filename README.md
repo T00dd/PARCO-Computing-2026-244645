@@ -1,4 +1,4 @@
-# Benchmark of SpMV with OpenMP
+# Benchmark of SpMV with MPI
 
 This repository contains an analysis of the Sparse Matrix-Vector Multiplication (SpMV) algorithm. 
 The implementation is in C and parallelized with MPI. 
